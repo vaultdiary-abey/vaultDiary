@@ -1238,3 +1238,8 @@ button.attachment-name {
 .attachments li .attachment-actions {
   grid-area: actions;
 }
+
+.link.small-link {
+  padding: 0;
+  font-size: inherit;
+}

@@ -170,7 +170,11 @@ export class Controller extends Emitter {
     for (const ev of ['pointerdown', 'keydown', 'touchstart', 'wheel', 'input']) {
       window.addEventListener(ev, () => this.touch(), { passive: true, capture: true })
     }
-    document.addEventListener('visibilitychange', () => this.checkIdle())
+    document.addEventListener('visibilitychange', () => {
+      this.checkIdle()
+      // Back in the foreground (iOS may have suspended requests in the background): carry on.
+      if (document.visibilityState === 'visible' && this.online) this.kickAll()
+    })
     setInterval(() => this.checkIdle(), 15_000)
 
     if (!CLIENT_ID && !FAKE_DRIVE) {
@@ -707,8 +711,10 @@ export class Controller extends Emitter {
     this.emit()
   }
 
+  /** "Sync now": also retries uploads waiting in backoff immediately. */
   syncNow() {
-    this.kickAll()
+    void this.uploads.retryNow()
+    void this.sync?.sync()
   }
 
   // ---------------------------------------------------------------- attachments, backup

@@ -9,6 +9,36 @@ import { backoffDelay } from './backoff'
 /** Drive keeps resumable sessions for a week; start over well before that. */
 const SESSION_MAX_AGE = 5 * 24 * 3600_000
 
+/**
+ * Safety net on top of the Drive client's own timeouts: no single step may hold the queue for
+ * ever (a request that never settles would otherwise block every upload until a restart).
+ */
+export const STEP_TIMEOUT = 90_000
+/** A slice may take longer on a slow connection: STEP_TIMEOUT plus this per MiB. */
+export const SLICE_TIMEOUT_PER_MIB = 30_000
+
+class StepTimeout extends OfflineError {
+  constructor() {
+    super('Google Drive did not answer in time; trying again.')
+  }
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new StepTimeout()), ms)
+    p.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      },
+    )
+  })
+}
+
 export interface UploadProgress {
   fileId: string
   size: number
@@ -32,6 +62,10 @@ export class UploadQueue extends Emitter {
   private activeId: string | null = null
   blocked: QueueBlock = null
   now: () => number = Date.now
+  /** Tests shorten these. */
+  stepTimeout = STEP_TIMEOUT
+  sliceTimeoutPerMiB = SLICE_TIMEOUT_PER_MIB
+  private lastProgressEmit = 0
 
   constructor(
     db: VaultDB,
@@ -87,6 +121,13 @@ export class UploadQueue extends Emitter {
       }
     })()
     return this.running
+  }
+
+  /** "Sync now": retry everything waiting in backoff right away. */
+  async retryNow(): Promise<void> {
+    await this.db.uploads.toCollection().modify({ nextAttemptAt: 0 })
+    await this.refresh()
+    void this.kick()
   }
 
   stop(): void {
@@ -145,7 +186,10 @@ export class UploadQueue extends Emitter {
       let status: Awaited<ReturnType<DriveClient['queryResumable']>> | null = null
       if (rec.sessionUrl && this.now() - rec.sessionStartedAt < SESSION_MAX_AGE) {
         try {
-          status = await drive.queryResumable(rec.sessionUrl, rec.size)
+          status = await withTimeout(
+            drive.queryResumable(rec.sessionUrl, rec.size),
+            this.stepTimeout,
+          )
         } catch (e) {
           if (!(e instanceof DriveError && (e.status === 404 || e.status === 410))) throw e
           status = null
@@ -153,23 +197,44 @@ export class UploadQueue extends Emitter {
       }
       if (!status) {
         // An earlier attempt may have finished even though we never saw the reply.
-        const existing = (await drive.findByName(location.filesId, name)).find(
-          (f) => f.size === rec.size,
-        )
+        const existing = (
+          await withTimeout(drive.findByName(location.filesId, name), this.stepTimeout)
+        ).find((f) => f.size === rec.size)
         if (existing) {
           await this.finish(rec)
           return 'next'
         }
-        const sessionUrl = await drive.startResumable(location.filesId, name, rec.size)
+        const sessionUrl = await withTimeout(
+          drive.startResumable(location.filesId, name, rec.size),
+          this.stepTimeout,
+        )
         rec = await this.save(rec, { sessionUrl, sessionStartedAt: this.now(), uploaded: 0 })
         status = { done: false, nextOffset: 0 }
       }
       while (!status.done) {
-        const start = status.nextOffset
+        const start: number = status.nextOffset
         rec = await this.save(rec, { uploaded: start })
         if (!(await this.db.uploads.get(rec.fileId))) return 'next' // cancelled
-        const slice = rec.blob.slice(start, Math.min(rec.size, start + UPLOAD_SLICE))
-        status = await drive.putSlice(rec.sessionUrl!, slice, start, rec.size)
+        // Read the slice into memory first: Safari can fail or stall when a request body is a
+        // Blob that lives in IndexedDB.
+        let bytes: ArrayBuffer
+        try {
+          bytes = await rec.blob
+            .slice(start, Math.min(rec.size, start + UPLOAD_SLICE))
+            .arrayBuffer()
+        } catch (e) {
+          throw new Error(
+            `Could not read the encrypted file from this device's storage (${(e as Error).message}).`,
+            { cause: e },
+          )
+        }
+        const slice = new Blob([bytes])
+        status = await withTimeout(
+          drive.putSlice(rec.sessionUrl!, slice, start, rec.size, (sent) =>
+            this.sliceProgress(rec.fileId, start + sent),
+          ),
+          this.stepTimeout + (slice.size / (1024 * 1024)) * this.sliceTimeoutPerMiB,
+        )
       }
       if (status.file.size !== rec.size) {
         await drive.trash(status.file.id)
@@ -198,6 +263,22 @@ export class UploadQueue extends Emitter {
       return offline ? 'stop' : 'next'
     } finally {
       this.activeId = null
+      // Show the item as waiting again (with its error, if any), not as still uploading.
+      const p = this.progress.get(rec.fileId)
+      if (p) this.progress.set(rec.fileId, { ...p, active: false })
+      this.emit()
+    }
+  }
+
+  /** Bytes sent within the current slice (in memory only, at most 4 updates a second). */
+  private sliceProgress(fileId: string, uploaded: number) {
+    const p = this.progress.get(fileId)
+    if (!p) return
+    this.progress.set(fileId, { ...p, uploaded: Math.max(p.uploaded, uploaded) })
+    const now = Date.now()
+    if (now - this.lastProgressEmit > 250) {
+      this.lastProgressEmit = now
+      this.emit()
     }
   }
 

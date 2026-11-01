@@ -48,6 +48,8 @@ export class FakeDrive implements DriveClient {
   onChange?: () => void
   /** Test hook: throw OfflineError on the Nth upload slice. */
   failSliceAt: number | null = null
+  /** Test hook: the next slice upload never answers (like a request iOS leaves hanging). */
+  hangNext = false
   slicesPut = 0
   requests = 0
 
@@ -202,7 +204,18 @@ export class FakeDrive implements DriveClient {
     return { done: true, file: await this.put(s.parent, s.name, data) }
   }
 
-  async putSlice(url: string, slice: Blob, start: number, total: number) {
+  async putSlice(
+    url: string,
+    slice: Blob,
+    start: number,
+    total: number,
+    onProgress?: (sent: number) => void,
+  ) {
+    if (this.hangNext) {
+      this.hangNext = false
+      return new Promise<never>(() => {})
+    }
+    onProgress?.(slice.size)
     this.check()
     const s = this.session(url)
     if (total !== s.total || start !== s.receivedBytes) {

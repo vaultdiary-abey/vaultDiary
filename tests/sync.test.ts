@@ -515,6 +515,36 @@ describe('upload queue', () => {
     expect(a.uploads.items()).toHaveLength(0)
   })
 
+  it('a request that never answers times out, shows its error, and resumes', async () => {
+    const a = await device()
+    await a.session.addAttachment(new File([randomBytes(1000)], 'clip.mp4'))
+    a.uploads.stepTimeout = 50
+    a.uploads.sliceTimeoutPerMiB = 0
+    drive.hangNext = true
+    await a.uploads.kick() // must not hang
+    a.uploads.stop()
+    const [item] = a.uploads.items()
+    expect(item.active).toBe(false) // not shown as "uploading" any more
+    expect(item.lastError).toMatch(/did not answer in time/)
+    expect(item.attempts).toBe(1)
+    // "Sync now" retries at once instead of waiting for the backoff.
+    await a.uploads.retryNow()
+    await a.uploads.kick()
+    expect(a.uploads.items()).toHaveLength(0)
+    expect(await a.db.uploads.count()).toBe(0)
+  })
+
+  it('a failed upload is shown as waiting with its error, not as still uploading', async () => {
+    const a = await device()
+    await a.session.addAttachment(new File([randomBytes(10)], 'a.bin'))
+    drive.failSliceAt = drive.slicesPut + 1
+    await a.uploads.kick()
+    a.uploads.stop()
+    const [item] = a.uploads.items()
+    expect(item).toMatchObject({ active: false, attempts: 1 })
+    expect(item.lastError).toMatch(/network drop/)
+  })
+
   it('cancels a queued upload when the attachment is removed', async () => {
     const a = await device()
     const att = await a.session.addAttachment(new File([randomBytes(10)], 'a.bin'))
