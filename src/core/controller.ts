@@ -12,8 +12,10 @@ import {
   unlockWithPassphrase,
   unwrapWithRecoveryWords,
   type NewVault,
+  type PassphraseWrapper,
   type VaultFile,
 } from '../crypto/vault'
+import type { VaultOp } from '../crypto/vaultMerge'
 import { FakeAuth, GoogleAuth } from '../drive/auth'
 import { HttpDrive } from '../drive/http'
 import { AuthError, OfflineError, type About, type DriveClient } from '../drive/types'
@@ -28,6 +30,7 @@ import type { Attachment } from '../model/entry'
 import { KV, VaultDB } from '../storage/db'
 import { SyncEngine } from '../sync/sync'
 import { UploadQueue } from '../sync/uploads'
+import { recordVaultOps } from '../sync/vaultOps'
 import { CLIENT_ID, FAKE_DRIVE, READ_ONLY } from './config'
 import { Emitter } from './emitter'
 import { getAutoLockMinutes } from './prefs'
@@ -341,8 +344,7 @@ export class Controller extends Emitter {
     if (!raw || !this.vault) return
     this.set({ busy: true, error: null })
     try {
-      const updated = await rewrapPassphrase(this.vault, raw, passphrase)
-      await this.saveVault(updated)
+      await this.savePassphrase(await rewrapPassphrase(this.vault, raw, passphrase))
       const mk = await importMasterKey(raw)
       wipe(raw)
       this.pendingRawMk = null
@@ -357,7 +359,7 @@ export class Controller extends Emitter {
   async changePassphrase(current: string, next: string): Promise<void> {
     if (!this.vault) throw new Error('No vault.')
     try {
-      await this.saveVault(await changePassphrase(this.vault, current, next))
+      await this.savePassphrase(await changePassphrase(this.vault, current, next))
     } catch (e) {
       if (e instanceof WrongSecretError)
         throw new Error('Your current passphrase is wrong.', { cause: e })
@@ -366,12 +368,15 @@ export class Controller extends Emitter {
     void this.sync?.sync()
   }
 
-  private async saveVault(vault: VaultFile) {
-    const text = JSON.stringify(vault, null, 2)
-    await this.db.setKv(KV.vaultJson, text)
-    await this.db.setKv(KV.vaultDirty, true)
-    this.vault = vault
+  /** Records local vault.json changes; the next sync merges them onto Drive's copy. */
+  private async saveVaultOps(ops: VaultOp[]) {
+    this.vault = await recordVaultOps(this.db, ops)
     this.emit()
+  }
+
+  private async savePassphrase(updated: VaultFile) {
+    const wrapper = updated.wrappers.find((w) => w.type === 'passphrase') as PassphraseWrapper
+    await this.saveVaultOps([{ op: 'setPassphrase', wrapper }])
   }
 
   private async openSession(mk: CryptoKey) {

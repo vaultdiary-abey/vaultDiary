@@ -62,6 +62,19 @@ export function fromBase64(text: string): Uint8Array<ArrayBuffer> {
   return out
 }
 
+/** RFC 4648 §5 base64url without padding (WebAuthn credential ids). */
+export function toBase64Url(bytes: Uint8Array): string {
+  return toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+export function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
+  if (typeof text !== 'string' || !/^[A-Za-z0-9_-]*$/.test(text) || text.length % 4 === 1) {
+    throw new Error('Invalid base64url')
+  }
+  const b64 = text.replace(/-/g, '+').replace(/_/g, '/')
+  return fromBase64(b64 + '='.repeat((4 - (b64.length % 4)) % 4))
+}
+
 export function concatBytes(...parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
   let length = 0
   for (const p of parts) length += p.length
