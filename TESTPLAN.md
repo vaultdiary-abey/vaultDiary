@@ -112,6 +112,41 @@ Use a real device for each row. "Add" = Settings → Passkeys → **Add passkey*
 - [ ] `vault.json` in Drive now has a `"type": "webauthn-prf"` entry per passkey and nothing
       readable.
 
+## M. Media and recording (Phase 2, milestone B)
+
+- [ ] **Viewers.** Open a photo (JPEG), an iPhone **HEIC** photo, a PDF of several pages, an
+      audio file and a video from an entry. Each opens full screen; ✕ Close returns. HEIC: shows
+      in Safari; on Chrome/Windows it says it can't show it and offers **Download**.
+- [ ] A file over 200 MB says how big it is and offers **Download instead** / **Open anyway**.
+- [ ] A `.zip` or other file offers only **Download**.
+- [ ] **Voice note** (iPhone and laptop): 🎙 Voice note → allow the microphone → ● Record → the
+      timer and size count up → ■ Stop → play it back → **Keep**. It appears in the entry, uploads,
+      and plays in the viewer on the other device too.
+- [ ] **Video**: 🎥 Video → ⟲ Flip switches front/back camera → record ~10 s → **Re-take** →
+      record again → **Keep**. Only the kept clip is attached. iPhone: file ends in `.mp4`;
+      Chrome/Android: `.webm`. Each plays on the other device.
+- [ ] **Max length**: Settings → Longest video to record → 1 minute. Record a video: it stops by
+      itself at 1:00 and says so.
+- [ ] **Photo**: 📷 Photo → Take photo → Keep. "Attach files" still works for any file (and the
+      camera roll on iPhone).
+- [ ] **Crash safety**: start a video, record ~10 s, then swipe the app away (iPhone) / close the
+      tab (laptop). Reopen and unlock: "An unfinished video … wasn't saved" → **Recover**. It is
+      attached to that entry (or a new "Recovered recording" entry) and plays (up to the last
+      second or so). **Discard** removes it instead.
+- [ ] Lock (🔒) while recording: recording stops; after unlocking, it is offered for recovery.
+- [ ] Recording doesn't trigger auto-lock (set auto-lock to 1 minute, record for 2 minutes).
+- [ ] **Thumbnails**: new photos and videos show a small preview in the entry and on the
+      timeline; PDFs, audio and other files show an icon. On the second device the previews
+      appear after sync, also when offline afterwards.
+- [ ] **Older attachments**: photos/videos attached before this update get previews by
+      themselves within a few minutes of unlocking (watch the timeline). No "(conflict copy)"
+      entries appear even if phone and laptop are both open.
+- [ ] Remove an attachment that has a thumbnail: after sync both its `.vdf` and the thumbnail's
+      go to Drive's trash.
+- [ ] **Firebase only**: `curl -I https://YOUR-FIREBASE-ID.web.app/` shows
+      `Permissions-Policy: camera=(self), microphone=(self), …` and `media-src 'self' blob:` in
+      the CSP.
+
 ## U. App updates
 
 - [ ] With the app open (also the home-screen app), deploy a new version. Within an hour, or
@@ -136,5 +171,7 @@ Use a real device for each row. "Add" = Settings → Passkeys → **Add passkey*
        `python3 recovery/recover.py ~/Downloads/VaultDiary-*.zip -o ~/recovered` → enter the
        passphrase. Check the same 10 entries and all attachments. Run again with `--words`.
 9. [ ] Sign in to the app again: unlock with your passphrase and see all 10 entries.
-10. [ ] Phase 2: do the drill on a vault with at least one passkey. recovery.html and recover.py
-        open it with the passphrase and the words exactly as before.
+10. [ ] Phase 2: do the drill on a vault with at least one passkey, a recorded voice note, a
+        recorded video and photos with thumbnails. recovery.html and recover.py open it with the
+        passphrase and the words; recordings come out with their names (`Video ….webm/.mp4`,
+        `Voice note ….m4a/.webm`) and play; no thumbnail files appear in the output.

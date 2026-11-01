@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
+import { useState } from 'react'
+import { formatBytes } from '../lib/download'
 import { UpdateBanner } from './components'
 import { useController } from './controllerContext'
-import { href, type Route } from './router'
+import { href, navigate, type Route } from './router'
 
 function SyncBadge() {
   const c = useController()
@@ -32,6 +34,50 @@ function SyncBadge() {
   )
 }
 
+/** Offers to recover a recording left over from a crash, a closed tab or a lock. */
+function RecordingRecovery() {
+  const c = useController()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const rec = c.pendingRecordings[0]
+  if (!rec || c.readOnly) return null
+  const secs = Math.round(rec.durationMs / 1000)
+  const what = rec.kind === 'audio' ? 'voice note' : 'video'
+  const recover = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const entryId = await c.recoverRecording(rec.id)
+      navigate({ name: 'entry', id: entryId, edit: false })
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const discard = async () => {
+    if (!confirm(`Throw away this unfinished ${what}? It can't be recovered afterwards.`)) return
+    await c.discardRecording(rec.id)
+  }
+  return (
+    <div className="banner banner-action" role="status">
+      <span>
+        An unfinished {what} from {new Date(rec.startedAt).toLocaleString()} (
+        {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}, {formatBytes(rec.bytes)})
+        wasn't saved.{error && ` ${error}`}
+      </span>
+      <span className="row">
+        <button className="primary small" onClick={() => void recover()} disabled={busy}>
+          {busy ? 'Recovering…' : 'Recover'}
+        </button>
+        <button className="ghost small" onClick={() => void discard()} disabled={busy}>
+          Discard
+        </button>
+      </span>
+    </div>
+  )
+}
+
 function Banners() {
   const c = useController()
   const s = c.sync?.status
@@ -39,6 +85,7 @@ function Banners() {
   return (
     <>
       <UpdateBanner />
+      <RecordingRecovery />
       {c.readOnly && (
         <div className="banner">Read-only copy: you can read and download, not edit.</div>
       )}

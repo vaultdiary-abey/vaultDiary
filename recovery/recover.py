@@ -655,8 +655,18 @@ def recover(sources, out_dir, secret, use_words=False, log=print):
         for a in e["attachments"]:
             named.setdefault(a["fileId"], attachment_path(a["fileId"], a["name"]))
 
+    # Thumbnails (an attachment's thumbFileId) are previews the app can remake; not exported.
+    thumbs = {
+        a["thumbFileId"]
+        for e in ordered
+        for a in e["attachments"]
+        if isinstance(a.get("thumbFileId"), str) and ID_RE.match(a["thumbFileId"])
+    }
+
     written_files = set()
     for file_id, candidates in files.items():
+        if file_id not in named and file_id in thumbs:
+            continue
         dest = os.path.join(out_dir, named.get(file_id, orphan_path(file_id)))
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         errors = []

@@ -66,6 +66,24 @@ it('writes the sample vault fixture', async () => {
       mime: 'application/octet-stream',
       data: utf8('orphan'),
     },
+    // Phase 2: a photo and an in-app recording, each with a thumbnail (its own .vdf).
+    {
+      fileId: randomId(),
+      name: 'IMG_0042.jpg',
+      mime: 'image/jpeg',
+      data: pseudoRandom(30_000, 11),
+    },
+    {
+      fileId: randomId(),
+      name: 'Video 2026-03-05 06.01.02.webm',
+      mime: 'video/webm;codecs=vp9,opus',
+      data: pseudoRandom(50_000, 13),
+    },
+  ]
+  // Thumbnails are opaque to recovery (it skips them), so stand-in bytes are enough here.
+  const thumbs = [
+    { fileId: randomId(), data: pseudoRandom(2_000, 17) },
+    { fileId: randomId(), data: pseudoRandom(2_500, 19) },
   ]
   const att = (i: number) => ({
     fileId: files[i].fileId,
@@ -117,7 +135,11 @@ it('writes the sample vault fixture', async () => {
       body: '',
       tags: [],
       mood: 3,
-      attachments: [],
+      attachments: [
+        { ...att(4), thumbFileId: thumbs[0].fileId },
+        // durationMs stands for a field a later version might add: readers keep it.
+        { ...att(5), thumbFileId: thumbs[1].fileId, durationMs: 62_000 },
+      ],
     },
   ]
 
@@ -129,7 +151,7 @@ it('writes the sample vault fixture', async () => {
       await encryptBytes(mk, e.id, 'entry', utf8(JSON.stringify(e))),
     )
   }
-  for (const f of files) {
+  for (const f of [...files, ...thumbs.map((t) => ({ ...t, chunkSize: undefined }))]) {
     const parts: Uint8Array[] = []
     for await (const p of encryptContainer(mk, {
       id: f.fileId,
@@ -157,6 +179,7 @@ it('writes the sample vault fixture', async () => {
   files.forEach((f, i) =>
     write(join(exp, i === 3 ? orphanPath(f.fileId) : attachmentPath(f.fileId, f.name)), f.data),
   )
+  // Thumbnails are not exported.
 
   write(
     join(ROOT, 'secrets.json'),

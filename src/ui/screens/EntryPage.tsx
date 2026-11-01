@@ -3,6 +3,10 @@ import { formatBytes, saveBlob } from '../../lib/download'
 import { formatDay, formatTime, today } from '../../lib/dates'
 import { renderMarkdown } from '../../lib/markdown'
 import { displayTitle, MOODS, newEntry, type Attachment, type Entry } from '../../model/entry'
+import { canRecord } from '../../media/recorder'
+import { AttachmentViewer } from '../AttachmentViewer'
+import { RecordSheet, type RecordMode } from '../RecordSheet'
+import { Thumb } from '../Thumb'
 import { ErrorNote, ProgressBar } from '../components'
 import { useController } from '../controllerContext'
 import { href, navigate } from '../router'
@@ -92,14 +96,25 @@ function UploadState({ fileId }: { fileId: string }) {
 
 function AttachmentList(props: { attachments: Attachment[]; onRemove?: (a: Attachment) => void }) {
   const { download, progress, error, clearError } = useAttachmentDownload()
+  const [viewing, setViewing] = useState<Attachment | null>(null)
   if (!props.attachments.length) return null
   return (
     <div className="attachments">
+      {viewing && <AttachmentViewer attachment={viewing} onClose={() => setViewing(null)} />}
       <ul>
         {props.attachments.map((a) => (
           <li key={a.fileId}>
+            <button className="thumb-button" onClick={() => setViewing(a)} tabIndex={-1}>
+              <Thumb attachment={a} large />
+            </button>
             <div className="attachment-main">
-              <span className="attachment-name">📎 {a.name}</span>
+              <button
+                className="attachment-name link"
+                onClick={() => setViewing(a)}
+                aria-label={`Open ${a.name}`}
+              >
+                {a.name}
+              </button>
               <span className="muted small">{formatBytes(a.size)}</span>
               <UploadState fileId={a.fileId} />
             </div>
@@ -176,6 +191,7 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
   const [state, setState] = useState<SaveState>(isDraft ? 'new' : 'saved')
   const [error, setError] = useState<string | null>(null)
   const [encrypting, setEncrypting] = useState<{ name: string; done: number; total: number }[]>([])
+  const [recording, setRecording] = useState<RecordMode | null>(null)
   const draftRef = useRef(initial)
   const dirtyRef = useRef(false)
   const savedOnceRef = useRef(!isDraft)
@@ -221,6 +237,9 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
     timerRef.current = setTimeout(() => void save(), AUTOSAVE_DELAY)
   }
 
+  // The background thumbnail job leaves this entry alone while it is being edited.
+  useEffect(() => c.registerEditing(initial.id), [c, initial.id])
+
   // Save when leaving the page, hiding the app, or locking.
   useEffect(() => {
     const unregister = c.registerFlush(save)
@@ -254,7 +273,7 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
     setEncrypting(list.map((f) => ({ name: f.name, done: 0, total: f.size })))
     for (const [i, file] of list.entries()) {
       try {
-        const att = await session.addAttachment(file, (done, total) =>
+        const att = await c.attachFile(file, (done, total) =>
           setEncrypting((cur) => cur.map((x, j) => (j === i ? { ...x, done, total } : x))),
         )
         update({ attachments: [...draftRef.current.attachments, att] })
@@ -266,11 +285,18 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
     setEncrypting([])
   }
 
+  /** A kept recording or photo: encrypted on the device and queued like any attachment. */
+  const keepRecording = async (file: File) => {
+    const att = await c.attachFile(file)
+    update({ attachments: [...draftRef.current.attachments, att] })
+    await save()
+  }
+
   const removeAttachment = async (a: Attachment) => {
     if (!confirm(`Remove ${a.name} from this entry?`)) return
     update({ attachments: draftRef.current.attachments.filter((x) => x.fileId !== a.fileId) })
     await save()
-    await session.releaseFile(a.fileId)
+    await session.releaseAttachment(a)
   }
 
   const remove = async () => {
@@ -374,6 +400,27 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
         </div>
       ))}
       <ErrorNote message={error} onClose={() => setError(null)} />
+      {recording && (
+        <RecordSheet
+          mode={recording}
+          entry={{ id: draft.id, date: draft.date }}
+          onKeep={keepRecording}
+          onClose={() => setRecording(null)}
+        />
+      )}
+      {canRecord() && (
+        <div className="row record-buttons">
+          <button className="ghost" onClick={() => setRecording('audio')}>
+            🎙 Voice note
+          </button>
+          <button className="ghost" onClick={() => setRecording('video')}>
+            🎥 Video
+          </button>
+          <button className="ghost" onClick={() => setRecording('photo')}>
+            📷 Photo
+          </button>
+        </div>
+      )}
       <div className="row">
         <label className="ghost button-like">
           Attach files

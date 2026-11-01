@@ -2,7 +2,47 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { cpSync, existsSync, readFileSync, statSync } from 'node:fs'
+import { extname, join, normalize } from 'node:path'
 import { CSP } from './csp.mjs'
+
+const PDFJS_ASSETS = ['cmaps', 'standard_fonts', 'wasm', 'iccs']
+const PDFJS_ROOT = 'node_modules/pdfjs-dist'
+
+/** Serves/copies pdf.js's cmaps, standard fonts and wasm decoders as pdfjs/… on our own origin. */
+function pdfjsAssets(): Plugin {
+  let outDir = 'dist'
+  let building = false
+  return {
+    name: 'vaultdiary-pdfjs-assets',
+    configResolved(config) {
+      outDir = config.build.outDir
+      building = config.command === 'build'
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const m = /^\/pdfjs\/([a-z_]+)\/([^?]+)/.exec(req.url ?? '')
+        if (!m || !PDFJS_ASSETS.includes(m[1])) return next()
+        const file = normalize(join(PDFJS_ROOT, m[1], decodeURIComponent(m[2])))
+        if (
+          !file.startsWith(join(PDFJS_ROOT, m[1])) ||
+          !existsSync(file) ||
+          !statSync(file).isFile()
+        ) {
+          return next()
+        }
+        if (extname(file) === '.wasm') res.setHeader('Content-Type', 'application/wasm')
+        res.end(readFileSync(file))
+      })
+    },
+    closeBundle() {
+      if (!building) return
+      for (const dir of PDFJS_ASSETS) {
+        cpSync(join(PDFJS_ROOT, dir), join(outDir, 'pdfjs', dir), { recursive: true })
+      }
+    },
+  }
+}
 
 /** Adds the CSP <meta> tag to production builds (Vite's dev server needs inline scripts). */
 function cspMeta(): Plugin {
@@ -25,6 +65,7 @@ export default defineConfig({
   plugins: [
     react(),
     cspMeta(),
+    pdfjsAssets(),
     VitePWA({
       registerType: 'prompt',
       injectRegister: null,
@@ -45,9 +86,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,webmanifest}'],
         // recovery.html is a download, not part of the app shell.
-        globIgnores: ['recovery.html'],
+        // pdf.js cmaps/fonts/wasm are fetched only for PDFs that need them.
+        globIgnores: ['recovery.html', 'pdfjs/**'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/recovery\.html$/],
         // Never cache Google requests in the service worker.

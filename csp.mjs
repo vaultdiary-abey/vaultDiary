@@ -9,6 +9,8 @@ export const CSP_DIRECTIVES = [
   "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client",
   "style-src 'self' https://accounts.google.com/gsi/style",
   "img-src 'self' data: blob:",
+  // Decrypted audio/video attachments and recordings are played from blob: URLs.
+  "media-src 'self' blob:",
   "font-src 'self'",
   "connect-src 'self' https://www.googleapis.com https://accounts.google.com/gsi/",
   'frame-src https://accounts.google.com/gsi/',

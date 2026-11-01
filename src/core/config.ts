@@ -13,5 +13,11 @@ export const CLIENT_ID_PROBLEM: string | null = !RAW_CLIENT_ID
 export const CLIENT_ID: string = CLIENT_ID_PROBLEM ? '' : RAW_CLIENT_ID
 /** Build-time flag: hides every create, edit, delete and upload action. */
 export const READ_ONLY: boolean = import.meta.env.VITE_READ_ONLY === 'true'
-/** Dev-only in-memory Drive (`npm run dev:fake`). Always false in production builds. */
-export const FAKE_DRIVE: boolean = import.meta.env.DEV && import.meta.env.VITE_FAKE_DRIVE === 'true'
+/**
+ * In-browser fake Drive for `npm run dev:fake` and the e2e build (`npm run build:e2e`, mode
+ * "e2e", never deployed). Always false in production builds: MODE is replaced at build time, so
+ * the fake Drive code is dropped (CI checks dist/ for it).
+ */
+export const FAKE_DRIVE: boolean =
+  (import.meta.env.DEV || import.meta.env.MODE === 'e2e') &&
+  import.meta.env.VITE_FAKE_DRIVE === 'true'

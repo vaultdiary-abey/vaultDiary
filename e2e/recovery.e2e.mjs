@@ -62,7 +62,11 @@ assert(/do not belong/.test(status), 'wrong recovery words fail cleanly')
 
 status = await run('Fixture folder files + passphrase', folderFiles, secrets.passphrase, false)
 assert(status.startsWith('Done. Everything decrypted'), `decrypted (${status})`)
-assert((await page.locator('#results li').count()) === 8, '4 entries and 4 files listed')
+const expectedOutputs = walk(join(FIXTURE, 'expected')).length
+assert(
+  (await page.locator('#results li').count()) === expectedOutputs,
+  `${expectedOutputs} entries and files listed (thumbnails skipped)`,
+)
 const [dl] = await Promise.all([
   page.waitForEvent('download'),
   page.getByRole('button', { name: 'Download everything (.zip)' }).click(),

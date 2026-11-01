@@ -46,6 +46,26 @@ What this does and doesn't rely on:
 - Passkeys used from another device through the QR-code (hybrid) flow may not return a PRF
   result. The app then asks for the passphrase.
 
+## Photos, recordings and the device
+
+- Viewers decrypt an attachment on the device into memory (a Blob) and show it from a `blob:`
+  URL that is revoked when the viewer closes. Files over 200 MB ask first. SVG is never
+  rendered inline (it can carry scripts).
+- PDFs are drawn by pdf.js, bundled with the app. Its worker, fonts, cmaps and wasm decoders
+  are served from the app's own origin; pdf.js 6 contains no `eval`/`new Function`, so the CSP
+  still has no `'unsafe-eval'`.
+- Thumbnails are made on the device and encrypted like any file. Decrypted thumbnails are kept
+  in memory only and dropped on lock; IndexedDB caches only the encrypted `.vdf`.
+- Camera and microphone are used only while the record sheet is open (the browser asks for
+  permission; Firebase sends `Permissions-Policy: camera=(self), microphone=(self)`). Nothing is
+  streamed anywhere.
+- A recording is saved to IndexedDB every second so a crash doesn't lose it. Each piece is
+  encrypted (AES-256-GCM) with a per-recording key that is itself wrapped by the master key, so
+  IndexedDB never holds plaintext media. What is stored in the clear: the recording's kind,
+  MIME type, start time, length, size and the entry it belongs to. The per-recording key stays in
+  memory while recording, so the last pieces are still saved (encrypted) if the diary locks
+  mid-recording. Kept or discarded recordings are deleted from IndexedDB at once.
+
 ## Origins: GitHub Pages and Firebase
 
 The browser isolates storage, service workers, installed apps and passkeys **per origin**

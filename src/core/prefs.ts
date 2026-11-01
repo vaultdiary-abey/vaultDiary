@@ -43,3 +43,16 @@ export function applyTheme(theme: Theme = getTheme()): void {
   if (theme === 'system') delete document.documentElement.dataset.theme
   else document.documentElement.dataset.theme = theme
 }
+
+/** Longest video the app records, so clips don't fill Google Drive. Voice notes: AUDIO_MAX_MINUTES. */
+export const MAX_VIDEO_CHOICES = [1, 2, 5, 10, 15, 30] as const
+export const AUDIO_MAX_MINUTES = 60
+
+export function getMaxVideoMinutes(): number {
+  const n = Number(read('vd.maxVideoMinutes'))
+  return MAX_VIDEO_CHOICES.includes(n as (typeof MAX_VIDEO_CHOICES)[number]) ? n : 5
+}
+
+export function setMaxVideoMinutes(minutes: number): void {
+  write('vd.maxVideoMinutes', String(minutes))
+}

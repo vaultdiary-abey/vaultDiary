@@ -1,9 +1,9 @@
 {
   "format": "vaultdiary-vault",
   "v": 1,
-  "vaultId": "c8593a28a60644828e91ea359d6ef5ae",
-  "createdAt": "2026-11-01T17:42:02.904Z",
-  "updatedAt": "2026-11-01T17:42:02.904Z",
+  "vaultId": "8c8e668a11c3fcdc1b49b86efda0dbbe",
+  "createdAt": "2026-11-01T19:04:16.755Z",
+  "updatedAt": "2026-11-01T19:04:16.755Z",
   "wrappers": [
     {
       "type": "passphrase",
@@ -13,33 +13,33 @@
         "memoryKiB": 65536,
         "iterations": 3,
         "parallelism": 1,
-        "salt": "g0ZYxzUtynfafIwcZPgXBQ=="
+        "salt": "rInIRyCCVg9Ug2ClKY7LiQ=="
       },
-      "iv": "svCOAFl9MRCn68tD",
-      "ct": "YtAlpuQGV0eFUOalMtHQ3rE/wjZL++SJOI8crZF9QoCKSVCuLxe25o4q+BZO2vjY",
-      "updatedAt": "2026-11-01T17:42:03.177Z"
+      "iv": "6BpXylzLgv76DFwi",
+      "ct": "ul00Bg/g/z0bmLxwFW+Ww6JL9vapLL3hS4/jUEr+fUuzdDYvk4BeOP8E7KJwhmWX",
+      "updatedAt": "2026-11-01T19:04:17.019Z"
     },
     {
       "type": "recovery",
       "kdf": {
         "name": "hkdf-sha256",
-        "salt": "9XTPT42gIjnaceJO7Gsl9g==",
+        "salt": "2ZSH3RG/QADUrRoF31EAOQ==",
         "info": "VaultDiary v1 recovery key"
       },
-      "iv": "nU17F6JgPKt3V5GT",
-      "ct": "QxBgBc3KBx6D6JwM1WMTjtPmQizDDooNzQ//xHY4ZKB2HB1GbLOMGDDnRiR5hCv+"
+      "iv": "cRLI+OSydCEKV1/1",
+      "ct": "mUiZVUwcE39LyO5tz/OmtaXS+F0d89joiG1RdjBS2NiCdBUVVvAVWfR2MRYHqBhF"
     },
     {
       "type": "webauthn-prf",
-      "id": "0d8e3b60c198496fede7731660eece50",
+      "id": "0eaadb38345bb495ee4d6c9dc1697d2a",
       "label": "Fixture passkey",
       "provider": "icloud-keychain",
       "rpId": "vaultdiary-abey.github.io",
-      "credentialId": "Tm_u-do4F4xRSX2OHVHNJHfUVIQ",
-      "prfSalt": "2AikC8Q3jsdf716K0XSOF5Io5wVs8tNjM8y72CdeUuY",
-      "iv": "fndbcCQ+tWIJGktp",
-      "ct": "yOrrQIr/rOVbaknp63KzhZVjTIAU4eJ8sHCGE7IHkWKT397sbtxeEKYx1ZaiGx+0",
-      "createdAt": "2026-11-01T17:42:03.425Z"
+      "credentialId": "aiPvSzWfscgAGXQHTPYlDCfVtXI",
+      "prfSalt": "2pXUnZfq2ufAaeeF2ZxzhATz0oLOXPb_CP2PioPHlnc",
+      "iv": "uGiEev8E2+pj3N0l",
+      "ct": "u5r85BmQ0lbfPMpfBQV72syIBSaLTulT2MlQai539jyjzDRpavlPzocwoN0S4Ril",
+      "createdAt": "2026-11-01T19:04:17.266Z"
     }
   ]
 }

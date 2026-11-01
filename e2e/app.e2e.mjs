@@ -88,7 +88,7 @@ const attachment = Buffer.alloc(9 * 1024 * 1024 + 7, 7)
 await page
   .locator('input[type=file]')
   .setInputFiles({ name: 'big.bin', mimeType: 'application/octet-stream', buffer: attachment })
-await page.getByText('📎 big.bin').waitFor()
+await page.getByRole('button', { name: 'Open big.bin' }).waitFor()
 await page.waitForFunction(
   () =>
     !document.body.innerText.includes('Waiting to upload') &&
