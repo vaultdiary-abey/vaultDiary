@@ -272,7 +272,12 @@ All payloads are UTF-8 JSON. All metadata lives inside the ciphertext.
 - `tags` is an array of strings (always empty in Phase 1).
 - `mood` is an integer 1 (awful) … 5 (great), or `null`.
 - `attachments[].fileId` is the id of a `files/<fileId>.vdf` container; `name`, `mime` and `size`
-  are the original file's name, MIME type and byte length.
+  are the original file's name, MIME type and byte length. `mime` may carry parameters, e.g.
+  `video/webm;codecs=vp9,opus` for a video recorded in the app.
+- `attachments[].thumbFileId` (revision 2, optional) is the id of another `files/<id>.vdf`
+  container holding a small JPEG preview of a photo or video (longest side at most 320 px). It is
+  an ordinary `kind: "file"` container. Recovery tools don't export thumbnails: the original is
+  there. A missing or unreadable thumbnail is not an error; the app makes a new one.
 - Readers must keep fields they don't know, in the entry and in each attachment. A writer that
   re-saves an entry it read must write unknown fields back unchanged.
 
@@ -282,6 +287,11 @@ title. It is created when the same entry was edited on two devices before they s
 ### 5.2 Attachment (`kind: "file"`)
 
 The raw bytes of the original file. Name and type are stored in the entry that references it.
+Thumbnails (§5.1, `thumbFileId`) are stored the same way and contain a JPEG.
+
+When two versions of an entry differ only in their attachments' `thumbFileId` (two devices made
+thumbnails for the same attachment), writers merge them instead of making a conflict copy:
+Drive's thumbnails are kept, and the other version's fill attachments that have none.
 
 ### 5.3 Index (`kind: "index"`)
 
@@ -338,4 +348,6 @@ recovery words.
   - Optional `updatedAt` on the passphrase wrapper (§3.1) and the merge rules (§3.4).
   - Container kind `"settings"` (`settings.vds`, §5.4); updated recovery tools skip it silently.
   - Readers keep unknown entry and attachment fields (§5.1).
-  - New optional attachment fields are added in later milestones and listed in §5.1.
+  - Optional attachment field `thumbFileId` (§5.1): a JPEG preview in its own `.vdf`. Updated
+    recovery tools skip thumbnail files; older ones export them as `…-unreferenced.bin`.
+  - In-app recordings are ordinary attachments; their `mime` may include codec parameters.

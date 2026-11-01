@@ -5,6 +5,8 @@ A private, end-to-end encrypted diary that runs entirely in your browser and sto
 
 - Phone-first installable web app (PWA), works offline, light and dark themes.
 - Entries in Markdown, any number per day, autosave, mood, attachments of any type and size.
+- Photo, audio, video and PDF viewers; record voice notes, videos and photos in the app;
+  thumbnails on the timeline.
 - Timeline, month calendar, conflict-safe sync between devices.
 - Unlock with a passphrase, a passkey (Face ID, Touch ID, Apple or Google passkeys) or, if you
   forget the passphrase, with 24 recovery words.
@@ -13,8 +15,8 @@ A private, end-to-end encrypted diary that runs entirely in your browser and sto
 - No analytics, no trackers, no third-party scripts except Google's own sign-in library, and a
   strict Content Security Policy.
 
-Status: **Phase 2** in progress (see [PLAN.md](PLAN.md)): passkey unlock is done; media viewers
-and recording, search and tags, templates follow. Security notes: [SECURITY.md](SECURITY.md).
+Status: **Phase 2** in progress (see [PLAN.md](PLAN.md)): passkey unlock, media viewers, recording
+and thumbnails are done; search and tags, templates follow. Security notes: [SECURITY.md](SECURITY.md).
 
 ## How it protects your diary
 
@@ -50,6 +52,8 @@ npm run dev:fake      # no Google needed
 npm run lint && npm run format:check && npm test && npm run build
 npm run test:py       # recover.py tests (pip install cryptography argon2-cffi)
 npm run test:e2e      # Playwright, needs `npm run dev:fake` running and Playwright installed
+npm run build:e2e && npm run preview:e2e   # production build (real CSP, service worker) with
+                                           # the fake Drive; then APP_URL=http://localhost:4174/ npm run test:e2e
 npm run fixture       # regenerate tests/fixtures/sample-vault (then commit it)
 npm run build:recovery  # rebuild recovery/recovery.html (CI fails if it's stale)
 ```

@@ -95,3 +95,19 @@ Decisions for A:
   re-applied to Drive's copy before each push.
 - The provider and default label come from the authenticator's AAGUID when it is a known one,
   otherwise from the device type. They are display-only.
+
+Decisions for B:
+
+- pdf.js 6.4.299 bundled and lazy-loaded. pdf.js 6 no longer has the `isEvalSupported` option
+  because it has no eval code at all (checked in the bundled files).
+- Recording format: MP4 on Apple browsers, WebM on Chrome/Android/Firefox. Chrome can record
+  MP4 too, but only emits data when the recording stops, which defeats crash safety.
+- In-progress recordings are encrypted in IndexedDB with a per-recording key wrapped by MK
+  (local only, not part of FORMAT.md).
+- Photos from the in-app camera are JPEG stills from the live camera stream (so it works the
+  same on every device); "Attach files" still offers the camera roll and the native camera.
+- Max length: a "Longest video" setting (default 5 min); voice notes are capped at 60 min.
+- Thumbnails: JPEG, longest side 320 px. Entries that differ only in `thumbFileId` merge instead of
+  becoming conflict copies (the background job runs on every device).
+- `npm run build:e2e`: a production build in mode "e2e" with the fake Drive, so e2e tests run with
+  the real CSP and service worker. CI checks the fake Drive is not in `dist/`.
