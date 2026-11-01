@@ -8,6 +8,8 @@
     "dev:fake": "VITE_FAKE_DRIVE=true vite",
     "build": "tsc -b && vite build && node scripts/build-recovery.mjs --copy-to dist",
     "build:recovery": "node scripts/build-recovery.mjs",
+    "build:e2e": "VITE_FAKE_DRIVE=true vite build --mode e2e --outDir dist-e2e",
+    "preview:e2e": "vite preview --outDir dist-e2e --port 4174 --strictPort",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",

@@ -121,7 +121,7 @@ export class Controller extends Emitter {
   constructor() {
     super()
     const changed = () => this.emit()
-    if (import.meta.env.DEV && FAKE_DRIVE) {
+    if ((import.meta.env.DEV || import.meta.env.MODE === 'e2e') && FAKE_DRIVE) {
       this.auth = new FakeAuth(changed)
       this.drive = null as unknown as DriveClient // replaced in init() by the dev fake
     } else {
@@ -147,7 +147,7 @@ export class Controller extends Emitter {
   // ---------------------------------------------------------------- startup
 
   async init(): Promise<void> {
-    if (import.meta.env.DEV && FAKE_DRIVE) {
+    if ((import.meta.env.DEV || import.meta.env.MODE === 'e2e') && FAKE_DRIVE) {
       const { createDevFakeDrive } = await import('../drive/devFake')
       ;(this as { drive: DriveClient }).drive = await createDevFakeDrive(this.auth)
     }
