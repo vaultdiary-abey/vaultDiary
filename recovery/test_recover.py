@@ -155,5 +155,39 @@ class RecoverTest(unittest.TestCase):
         self.assertTrue(filecmp.dircmp(self.out, EXPECTED).diff_files == [])
 
 
+class ParseEntryTest(unittest.TestCase):
+    def test_keeps_unknown_entry_and_attachment_fields(self):
+        eid, fid, tid = "a" * 32, "b" * 32, "c" * 32
+        raw = {
+            "id": eid,
+            "date": "2026-11-01",
+            "createdAt": "2026-11-01T08:00:00.000Z",
+            "updatedAt": "2026-11-01T08:00:00.000Z",
+            "title": "Newer writer",
+            "body": "text",
+            "tags": ["a"],
+            "mood": 3,
+            "location": {"lat": 1},
+            "attachments": [
+                {"fileId": fid, "name": "clip.mp4", "mime": "video/mp4", "size": 10, "thumbFileId": tid}
+            ],
+        }
+        self.assertEqual(recover.parse_entry(json.loads(json.dumps(raw)), eid), raw)
+
+    def test_still_normalises_known_fields(self):
+        eid, fid = "a" * 32, "b" * 32
+        e = recover.parse_entry(
+            {"id": eid, "date": "2026-11-01", "mood": 9, "tags": ["x", 4],
+             "attachments": [{"fileId": fid, "size": "big", "extra": 1}, {}]},
+            eid,
+        )
+        self.assertIsNone(e["mood"])
+        self.assertEqual(e["tags"], ["x"])
+        self.assertEqual(
+            e["attachments"],
+            [{"fileId": fid, "name": "file", "mime": "application/octet-stream", "size": 0, "extra": 1}],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

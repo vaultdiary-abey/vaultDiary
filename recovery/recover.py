@@ -509,6 +509,7 @@ def parse_entry(raw, expected_id):
             size = a.get("size")
             attachments.append(
                 {
+                    **a,  # fields written by newer versions are kept
                     "fileId": a["fileId"],
                     "name": s(a.get("name"), "file"),
                     "mime": s(a.get("mime"), "application/octet-stream"),
@@ -517,6 +518,7 @@ def parse_entry(raw, expected_id):
             )
     tags = raw.get("tags") if isinstance(raw.get("tags"), list) else []
     return {
+        **raw,  # fields written by newer versions are kept
         "id": raw["id"],
         "date": raw["date"],
         "createdAt": s(raw.get("createdAt")),

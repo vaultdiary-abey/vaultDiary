@@ -6,6 +6,8 @@ export interface Attachment {
   name: string
   mime: string
   size: number
+  /** Fields written by newer versions are kept unchanged. */
+  [field: string]: unknown
 }
 
 /** 1 = awful … 5 = great, or null when not set. */
@@ -85,6 +87,7 @@ export function parseEntry(raw: unknown, expectedId?: string): Entry {
     attachments: attachments
       .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object' && isId(a.fileId))
       .map((a) => ({
+        ...a,
         fileId: a.fileId as string,
         name: str(a.name, 'file'),
         mime: str(a.mime, 'application/octet-stream'),
