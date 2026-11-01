@@ -6,6 +6,8 @@ export interface Attachment {
   name: string
   mime: string
   size: number
+  /** files/<id>.vdf holding a small JPEG preview (FORMAT.md revision 2). Optional. */
+  thumbFileId?: string
   /** Fields written by newer versions are kept unchanged. */
   [field: string]: unknown
 }
@@ -179,4 +181,54 @@ export function conflictCopy(local: Entry, now: Date = new Date()): Entry {
     title: `${local.title.trim() || displayTitle(local)} (conflict copy)`,
     updatedAt: now.toISOString(),
   }
+}
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value as object).sort()
+    return `{${keys
+      .filter((k) => (value as Record<string, unknown>)[k] !== undefined)
+      .map((k) => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function withoutThumbs(e: Entry): unknown {
+  return {
+    ...e,
+    updatedAt: undefined,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    attachments: e.attachments.map(({ thumbFileId, ...a }) => a),
+  }
+}
+
+/**
+ * Two devices may each add a thumbnail to the same old attachment (the background job runs on
+ * every device). If two versions of an entry differ only in thumbFileId, they are merged instead
+ * of making a conflict copy: Drive's thumbnails win, and this device's fill the gaps. Returns
+ * null when the versions differ in anything else. `dropped` are this device's thumbnail files
+ * that are no longer used.
+ */
+export function mergeThumbnailsOnly(
+  local: Entry,
+  remote: Entry,
+): { merged: Entry; changed: boolean; dropped: string[] } | null {
+  if (canonical(withoutThumbs(local)) !== canonical(withoutThumbs(remote))) return null
+  let changed = false
+  const attachments = remote.attachments.map((r, i) => {
+    const mine = local.attachments[i]?.thumbFileId
+    if (!isId(r.thumbFileId) && isId(mine)) {
+      changed = true
+      return { ...r, thumbFileId: mine }
+    }
+    return r
+  })
+  const kept = new Set(attachments.map((a) => a.thumbFileId).filter(isId))
+  const dropped = local.attachments
+    .map((a) => a.thumbFileId)
+    .filter(isId)
+    .filter((t) => !kept.has(t))
+  return { merged: { ...remote, attachments }, changed, dropped }
 }

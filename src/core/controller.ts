@@ -41,7 +41,10 @@ import {
   type VaultLocation,
 } from '../drive/vaultFolder'
 import { ZipWriter } from '../lib/zip'
+import { LARGE_FILE } from '../media/kind'
 import { RecordingStore, type RecordingMeta } from '../media/recordingStore'
+import { ThumbnailJob } from '../media/thumbJob'
+import { makeThumbnail, thumbnailable } from '../media/thumbnail'
 import { newEntry, type Attachment, type Entry } from '../model/entry'
 import { KV, VaultDB } from '../storage/db'
 import { SyncEngine } from '../sync/sync'
@@ -106,6 +109,12 @@ export class Controller extends Emitter {
   readonly recordings: RecordingStore
   /** Recordings left over from a crash, a closed tab or a lock, offered for recovery. */
   pendingRecordings: RecordingMeta[] = []
+  thumbJob: ThumbnailJob | null = null
+  /** Decrypted thumbnails, in memory only (object URLs), dropped on lock. */
+  private thumbUrls = new Map<string, Promise<string | null>>()
+  private thumbSlots = 3
+  private thumbWaiters: (() => void)[] = []
+  private editing = new Map<string, number>()
   /** Set while the setup screens show the recovery words. */
   pendingSetup: NewVault | null = null
   /** A newer version of the app has been downloaded and is waiting. */
@@ -603,7 +612,32 @@ export class Controller extends Emitter {
         this.emit()
       },
     })
-    this.unsubscribers = [session.subscribe(() => this.emit()), sync.subscribe(() => this.emit())]
+    const thumbJob = new ThumbnailJob({
+      db: this.db,
+      session: () => this.session,
+      fetchEncrypted: (fileId) => this.encryptedFile(fileId).catch(() => null),
+      listDriveFiles: async () => {
+        if (!this.auth.hasToken() || !this.location || !this.online) return null
+        return new Set((await this.drive.list(this.location.filesId)).map((f) => f.name))
+      },
+      make: makeThumbnail,
+      isEditing: (id) => this.editing.has(id),
+    })
+    let lastSynced: number | null = null
+    this.unsubscribers = [
+      session.subscribe(() => this.emit()),
+      sync.subscribe(() => {
+        this.emit()
+        // After each completed sync, make any missing thumbnails (in the background).
+        const st = sync.status
+        if (st.state === 'idle' && st.lastSyncedAt !== lastSynced && !this.readOnly) {
+          lastSynced = st.lastSyncedAt
+          void thumbJob.kick()
+        }
+      }),
+      thumbJob.subscribe(() => this.emit()),
+    ]
+    this.thumbJob = thumbJob
     this.session = session
     this.sync = sync
     this.lastActivity = Date.now()
@@ -640,6 +674,9 @@ export class Controller extends Emitter {
     }
     for (const u of this.unsubscribers) u()
     this.unsubscribers = []
+    this.thumbJob?.stop()
+    this.thumbJob = null
+    this.dropThumbnails()
     if (this.syncTimer) clearInterval(this.syncTimer)
     if (this.changeTimer) clearTimeout(this.changeTimer)
     this.session?.lock()
@@ -676,25 +713,106 @@ export class Controller extends Emitter {
 
   // ---------------------------------------------------------------- attachments, backup
 
+  /** An attachment's encrypted container: from the upload queue if still here, else Drive. */
+  async encryptedFile(
+    fileId: string,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<Blob> {
+    const queued = await this.db.uploads.get(fileId)
+    if (queued) return queued.blob
+    if (!this.auth.hasToken() || !this.location) {
+      throw new Error('Connect to Google Drive to download this attachment.')
+    }
+    const [file] = await this.drive.findByName(this.location.filesId, `${fileId}.vdf`)
+    if (!file) throw new Error('This attachment has not reached Google Drive yet.')
+    return this.drive.download(file.id, onProgress)
+  }
+
   async attachmentBlob(
     attachment: Attachment,
     onProgress?: (done: number, total: number) => void,
   ): Promise<Blob> {
     const session = this.session
     if (!session) throw new Error('The vault is locked.')
-    const queued = await this.db.uploads.get(attachment.fileId)
-    let encrypted: Blob
-    if (queued) {
-      encrypted = queued.blob
-    } else {
-      if (!this.auth.hasToken() || !this.location) {
-        throw new Error('Connect to Google Drive to download this attachment.')
-      }
-      const [file] = await this.drive.findByName(this.location.filesId, `${attachment.fileId}.vdf`)
-      if (!file) throw new Error('This attachment has not reached Google Drive yet.')
-      encrypted = await this.drive.download(file.id, onProgress)
+    return session.decryptAttachment(
+      attachment,
+      await this.encryptedFile(attachment.fileId, onProgress),
+    )
+  }
+
+  // ---------------------------------------------------------------- thumbnails
+
+  /** Entries open in an editor; the thumbnail job leaves them alone. */
+  registerEditing(entryId: string): () => void {
+    this.editing.set(entryId, (this.editing.get(entryId) ?? 0) + 1)
+    return () => {
+      const n = (this.editing.get(entryId) ?? 1) - 1
+      if (n > 0) this.editing.set(entryId, n)
+      else this.editing.delete(entryId)
     }
-    return session.decryptAttachment(attachment, encrypted)
+  }
+
+  /**
+   * Object URL of a decrypted thumbnail, or null when it can't be had right now. Decrypted
+   * thumbnails live in memory only; the encrypted .vdf is cached in IndexedDB.
+   */
+  thumbnailUrl(thumbFileId: string): Promise<string | null> {
+    let p = this.thumbUrls.get(thumbFileId)
+    if (!p) {
+      p = this.loadThumbnail(thumbFileId)
+      this.thumbUrls.set(thumbFileId, p)
+      // Failures (e.g. offline) are retried next time instead of being remembered.
+      void p.then((url) => url ?? this.thumbUrls.delete(thumbFileId))
+    }
+    return p
+  }
+
+  private async loadThumbnail(id: string): Promise<string | null> {
+    const session = this.session
+    if (!session) return null
+    while (this.thumbSlots === 0) await new Promise<void>((r) => this.thumbWaiters.push(r))
+    this.thumbSlots--
+    try {
+      let encrypted: Blob | null = null
+      const cached = await this.db.thumbs.get(id)
+      if (cached) encrypted = new Blob([cached.data])
+      else {
+        encrypted = await this.encryptedFile(id).catch(() => null)
+        if (encrypted) {
+          await this.db.thumbs.put({
+            fileId: id,
+            data: new Uint8Array(await encrypted.arrayBuffer()),
+          })
+        }
+      }
+      if (!encrypted || session.locked) return null
+      const jpeg = await session.decryptThumbnail(id, encrypted)
+      return session.locked ? null : URL.createObjectURL(jpeg)
+    } catch {
+      return null
+    } finally {
+      this.thumbSlots++
+      this.thumbWaiters.shift()?.()
+    }
+  }
+
+  private dropThumbnails() {
+    for (const p of this.thumbUrls.values()) void p.then((url) => url && URL.revokeObjectURL(url))
+    this.thumbUrls.clear()
+  }
+
+  /** Makes, encrypts and queues a thumbnail for a photo or video just attached. */
+  private async thumbnailFor(file: Blob, attachment: Attachment): Promise<Attachment> {
+    const kind = thumbnailable(attachment.mime, attachment.name)
+    const session = this.session
+    if (!kind || !session || file.size > LARGE_FILE) return attachment
+    try {
+      const jpeg = await makeThumbnail(file, kind)
+      if (!jpeg) return attachment
+      return { ...attachment, thumbFileId: await session.addThumbnail(jpeg) }
+    } catch {
+      return attachment // the background job tries again later
+    }
   }
 
   async backup(onProgress: (done: number, total: number) => void): Promise<Blob> {
@@ -813,7 +931,8 @@ export class Controller extends Emitter {
   ): Promise<Attachment> {
     const session = this.session
     if (!session) throw new Error('The vault is locked.')
-    return session.addAttachment(file, onProgress)
+    const attachment = await session.addAttachment(file, onProgress)
+    return this.thumbnailFor(file, attachment)
   }
 
   // ---------------------------------------------------------------- app updates

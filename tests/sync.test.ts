@@ -181,6 +181,35 @@ describe('sync', () => {
     expect(b.sync.status.pendingEntries).toBe(0)
   })
 
+  it('two devices adding thumbnails to the same attachment merge without a conflict copy', async () => {
+    const a = await device()
+    const att = {
+      fileId: 'f'.repeat(32),
+      name: 'IMG.jpg',
+      mime: 'image/jpeg',
+      size: 10,
+    }
+    const e = { ...entry('photo day'), attachments: [att] }
+    await a.session.save(e)
+    await a.sync.sync()
+    const b = await device()
+    await b.sync.sync()
+    // Both background jobs make a thumbnail before either syncs.
+    const ta = 'a'.repeat(32)
+    const tb = 'b'.repeat(32)
+    await a.session.save(later(e, { attachments: [{ ...att, thumbFileId: ta }] }))
+    await b.session.save(later(e, { attachments: [{ ...att, thumbFileId: tb }] }))
+    await a.sync.sync()
+    await b.sync.sync()
+    await a.sync.sync()
+    for (const d of [a, b]) {
+      expect(titles(d.session)).toEqual(['photo day'])
+      expect(d.session.entries.get(e.id)!.attachments[0].thumbFileId).toBe(ta)
+    }
+    // B's unused thumbnail file is scheduled for deletion.
+    expect((await b.db.deletes.toArray()).map((d) => d.path)).toContain(`files/${tb}.vdf`)
+  })
+
   it('keeps a local edit when the entry was deleted on another device', async () => {
     const a = await device()
     const e = entry('doomed')

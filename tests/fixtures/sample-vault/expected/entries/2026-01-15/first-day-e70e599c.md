@@ -1,5 +1,5 @@
 ---
-id: 96c4f83ca7fbd177f70ab4b176789be6
+id: e70e599c7d150b342466d6b097d2bf46
 date: 2026-01-15
 title: "First day"
 created: 2026-01-15T08:00:00.000Z
@@ -21,5 +21,5 @@ Café ☕ — naïve façade.
 
 ## Attachments
 
-- [hello.txt](<../../files/05e030fc-hello.txt>) (14 bytes)
-- [empty.bin](<../../files/4f1b208b-empty.bin>) (0 bytes)
+- [hello.txt](<../../files/b85b00f6-hello.txt>) (14 bytes)
+- [empty.bin](<../../files/dcb46cc3-empty.bin>) (0 bytes)

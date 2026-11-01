@@ -300,6 +300,25 @@ assert(
   'kept recordings are removed from the crash-safety store',
 )
 
+await page.waitForFunction(
+  () => document.querySelectorAll('.attachments .thumb-img img').length >= 4,
+  null,
+  { timeout: 20000 },
+)
+const thumbs = await page
+  .locator('.attachments .thumb-img')
+  .evaluateAll((els) => els.map((e) => e.dataset.kind))
+assert(
+  thumbs.filter((k) => k === 'image').length >= 2 &&
+    thumbs.filter((k) => k === 'video').length >= 2,
+  `thumbnails made on attach for photos and videos (${thumbs.join(', ')})`,
+)
+assert(
+  (await page.locator('.attachments .thumb-icon').count()) >= 4,
+  'generic icons for files without a thumbnail (HEIC here, PDF, audio, other)',
+)
+await page.screenshot({ path: `${SHOTS}/m6-thumbnails.png`, fullPage: true })
+
 await openViewer(page, videos[0])
 await page.waitForFunction(() => document.querySelector('.viewer video')?.readyState >= 1)
 assert(true, 'recorded video plays in the viewer')
@@ -307,6 +326,10 @@ await closeViewer(page)
 
 console.log('Crash during a recording: recover it after reopening')
 await page.getByRole('button', { name: 'Done' }).click()
+await page.getByRole('link', { name: 'Timeline' }).click()
+await page.locator('.entry-card .thumb-img img').first().waitFor()
+assert(true, 'thumbnails show on the timeline')
+await page.screenshot({ path: `${SHOTS}/m7-timeline.png` })
 await page.getByRole('link', { name: 'Today' }).click()
 await page.getByRole('link', { name: '+ New entry' }).click()
 await page.getByRole('button', { name: '🎥 Video' }).click()

@@ -1,6 +1,6 @@
 // The unlocked vault: decrypted entries in memory, encrypted copies in IndexedDB.
 // Locking drops this object; the master key is a non-extractable CryptoKey referenced only here.
-import { randomId } from '../crypto/bytes'
+import { isId, randomId } from '../crypto/bytes'
 import {
   blobSource,
   decryptJson,
@@ -150,16 +150,22 @@ export class VaultSession extends Emitter {
     })
     this.entries.delete(id)
     this.summaries.delete(id)
-    if (entry) for (const a of entry.attachments) await this.releaseFile(a.fileId)
+    if (entry) for (const a of entry.attachments) await this.releaseAttachment(a)
     this.emit()
     this.onLocalChange()
   }
 
   isReferenced(fileId: string): boolean {
     for (const e of this.entries.values()) {
-      if (e.attachments.some((a) => a.fileId === fileId)) return true
+      if (e.attachments.some((a) => a.fileId === fileId || a.thumbFileId === fileId)) return true
     }
     return false
+  }
+
+  /** Releases an attachment's file and its thumbnail (see releaseFile). */
+  async releaseAttachment(a: Attachment): Promise<void> {
+    await this.releaseFile(a.fileId)
+    if (isId(a.thumbFileId)) await this.releaseFile(a.thumbFileId)
   }
 
   /**
@@ -170,7 +176,49 @@ export class VaultSession extends Emitter {
     if (this.isReferenced(fileId) || this.summaries.size > 0) return
     const queued = await this.db.uploads.get(fileId)
     if (queued) await this.db.uploads.delete(fileId)
+    await this.db.thumbs.delete(fileId)
     await this.db.deletes.put({ path: `files/${fileId}.vdf`, driveId: null, createdAt: Date.now() })
+  }
+
+  /**
+   * Encrypts a JPEG preview as its own files/<id>.vdf, queues it for upload and keeps the
+   * encrypted copy in IndexedDB so previews show offline. Returns its file id.
+   */
+  async addThumbnail(jpeg: Blob): Promise<string> {
+    const fileId = randomId()
+    const blob = await encryptToBlob(this.key, {
+      id: fileId,
+      kind: 'file',
+      source: blobSource(jpeg),
+    })
+    const data = new Uint8Array(await blob.arrayBuffer())
+    await this.db.thumbs.put({ fileId, data })
+    await this.queueUpload(fileId, blob)
+    return fileId
+  }
+
+  private async queueUpload(fileId: string, blob: Blob): Promise<void> {
+    await this.db.uploads.put({
+      fileId,
+      blob,
+      size: blob.size,
+      sessionUrl: null,
+      sessionStartedAt: 0,
+      uploaded: 0,
+      attempts: 0,
+      nextAttemptAt: 0,
+      lastError: null,
+      createdAt: Date.now(),
+    })
+    this.onLocalChange()
+  }
+
+  /** Decrypts a thumbnail container into a JPEG Blob. */
+  async decryptThumbnail(fileId: string, encrypted: Blob): Promise<Blob> {
+    return decryptToBlob(this.key, blobSource(encrypted), 'image/jpeg', {
+      expectedId: fileId,
+      expectedKind: 'file',
+    })
   }
 
   /** Encrypts a file on this device into the upload queue. */
@@ -185,19 +233,7 @@ export class VaultSession extends Emitter {
       source: blobSource(file),
       onProgress,
     })
-    await this.db.uploads.put({
-      fileId,
-      blob,
-      size: blob.size,
-      sessionUrl: null,
-      sessionStartedAt: 0,
-      uploaded: 0,
-      attempts: 0,
-      nextAttemptAt: 0,
-      lastError: null,
-      createdAt: Date.now(),
-    })
-    this.onLocalChange()
+    await this.queueUpload(fileId, blob)
     return {
       fileId,
       name: file.name || 'file',

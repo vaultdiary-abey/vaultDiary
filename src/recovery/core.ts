@@ -1,7 +1,7 @@
 // Offline recovery: takes the files of a downloaded VaultDiary folder and/or zips (our backup
 // zip or Google Drive's "Download" zips), unlocks vault.json and decrypts everything.
 // Used by recovery.html; recover.py implements the same steps.
-import { fromUtf8, wipe } from '../crypto/bytes'
+import { fromUtf8, isId, wipe } from '../crypto/bytes'
 import {
   blobSource,
   decryptBytes,
@@ -175,7 +175,13 @@ export async function decryptAll(
     const md = entryToMarkdown(e, (id) => files.has(id))
     outputs.push({ path: entryPath(e), blob: new Blob([md], { type: 'text/markdown' }) })
   }
+  // Thumbnails (attachments' thumbFileId) are previews the app can remake; they are not exported.
+  const thumbs = new Set<string>()
+  for (const e of entries) {
+    for (const a of e.attachments) if (isId(a.thumbFileId)) thumbs.add(a.thumbFileId)
+  }
   for (const [id, blob] of files) {
+    if (!named.has(id) && thumbs.has(id)) continue
     outputs.push({ path: named.get(id) ?? orphanPath(id), blob })
   }
   for (const [id, path] of named) {

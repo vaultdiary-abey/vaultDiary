@@ -17,7 +17,7 @@ import {
   type DriveFile,
 } from '../drive/types'
 import { INDEX_FILE, VAULT_FILE, type VaultLocation } from '../drive/vaultFolder'
-import { buildIndex, conflictCopy, type Entry } from '../model/entry'
+import { buildIndex, conflictCopy, mergeThumbnailsOnly, type Entry } from '../model/entry'
 import { KV, type EntryRecord, type VaultDB } from '../storage/db'
 
 export type SyncState = 'idle' | 'syncing' | 'offline' | 'needs-auth' | 'error'
@@ -344,6 +344,7 @@ export class SyncEngine extends Emitter {
 
     let write: EntryRecord[] = []
     let apply: Entry[] = []
+    let thumbMerge: ReturnType<typeof mergeThumbnailsOnly> = null
     if (!rec) {
       write = [remoteRecord()]
       apply = [remote]
@@ -372,6 +373,23 @@ export class SyncEngine extends Emitter {
       // Deleted here but edited elsewhere: keep the edit.
       write = [remoteRecord(rec)]
       apply = [remote]
+    } else if ((thumbMerge = mergeThumbnailsOnly(local, remote))) {
+      // Both sides only added thumbnails: merge them instead of making a conflict copy.
+      const { merged, changed } = thumbMerge
+      if (!changed) {
+        write = [remoteRecord(rec)]
+        apply = [remote]
+      } else {
+        const next = { ...merged, updatedAt: new Date().toISOString() }
+        write = [
+          {
+            ...remoteRecord(rec),
+            data: await session.encryptEntry(next),
+            dirty: 1,
+          },
+        ]
+        apply = [next]
+      }
     } else {
       const copy = conflictCopy(local)
       write = [
@@ -402,6 +420,8 @@ export class SyncEngine extends Emitter {
       return false
     }
     for (const e of apply) session.applyRemote(e)
+    // This device's thumbnails that lost to Drive's are deleted.
+    for (const id of thumbMerge?.dropped ?? []) await session.releaseFile(id)
     return apply.length > 0
   }
 

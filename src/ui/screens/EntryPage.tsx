@@ -6,6 +6,7 @@ import { displayTitle, MOODS, newEntry, type Attachment, type Entry } from '../.
 import { canRecord } from '../../media/recorder'
 import { AttachmentViewer } from '../AttachmentViewer'
 import { RecordSheet, type RecordMode } from '../RecordSheet'
+import { Thumb } from '../Thumb'
 import { ErrorNote, ProgressBar } from '../components'
 import { useController } from '../controllerContext'
 import { href, navigate } from '../router'
@@ -103,13 +104,16 @@ function AttachmentList(props: { attachments: Attachment[]; onRemove?: (a: Attac
       <ul>
         {props.attachments.map((a) => (
           <li key={a.fileId}>
+            <button className="thumb-button" onClick={() => setViewing(a)} tabIndex={-1}>
+              <Thumb attachment={a} large />
+            </button>
             <div className="attachment-main">
               <button
                 className="attachment-name link"
                 onClick={() => setViewing(a)}
                 aria-label={`Open ${a.name}`}
               >
-                📎 {a.name}
+                {a.name}
               </button>
               <span className="muted small">{formatBytes(a.size)}</span>
               <UploadState fileId={a.fileId} />
@@ -233,6 +237,9 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
     timerRef.current = setTimeout(() => void save(), AUTOSAVE_DELAY)
   }
 
+  // The background thumbnail job leaves this entry alone while it is being edited.
+  useEffect(() => c.registerEditing(initial.id), [c, initial.id])
+
   // Save when leaving the page, hiding the app, or locking.
   useEffect(() => {
     const unregister = c.registerFlush(save)
@@ -266,7 +273,7 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
     setEncrypting(list.map((f) => ({ name: f.name, done: 0, total: f.size })))
     for (const [i, file] of list.entries()) {
       try {
-        const att = await session.addAttachment(file, (done, total) =>
+        const att = await c.attachFile(file, (done, total) =>
           setEncrypting((cur) => cur.map((x, j) => (j === i ? { ...x, done, total } : x))),
         )
         update({ attachments: [...draftRef.current.attachments, att] })
@@ -289,7 +296,7 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
     if (!confirm(`Remove ${a.name} from this entry?`)) return
     update({ attachments: draftRef.current.attachments.filter((x) => x.fileId !== a.fileId) })
     await save()
-    await session.releaseFile(a.fileId)
+    await session.releaseAttachment(a)
   }
 
   const remove = async () => {
