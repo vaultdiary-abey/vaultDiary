@@ -1,4 +1,4 @@
-# Manual test plan (Phase 1)
+# Manual test plan (Phases 1 and 2)
 
 Automated coverage: `npm test` (crypto, format, sync, upload queue, recovery core, cross-check with
 `recover.py`), `npm run test:py` (recover.py) and `npm run test:e2e` (real browser against the fake
@@ -78,6 +78,46 @@ devices can show. Use a phone and a laptop. Tick each box.
 - [ ] A build with `READ_ONLY=true` shows no New/Edit/Delete/Attach/Change passphrase controls.
 - [ ] `curl -I https://YOUR-FIREBASE-ID.web.app/` shows the `Content-Security-Policy` header.
 
+## P. Passkeys (Phase 2, milestone A)
+
+Use a real device for each row. "Add" = Settings → Passkeys → **Add passkey** → passphrase →
+**Create passkey** (prompt 1) → name → **Confirm with passkey** (prompt 2).
+
+- [ ] **iPhone Safari** (iOS 18+): Add, save to Passwords/iCloud Keychain, Face ID twice. Default
+      name "iPhone Face ID". Lock → **Unlock with passkey** → Face ID → unlocked, no new
+      passphrase asked.
+- [ ] **iPhone home-screen app** (same site, installed): it shares the site's passkeys; unlock
+      with passkey works. Turn on airplane mode, lock, unlock with passkey: still works.
+- [ ] **Mac Safari** (macOS 15+): Add (Touch ID / iCloud Keychain), lock, unlock with passkey.
+- [ ] **Mac Chrome** (132+): Add and choose **iCloud Keychain** in Chrome's dialog (not "Chrome
+      profile": that one has no PRF and is refused with "can't unlock the diary", nothing saved).
+- [ ] **Android Chrome** or **desktop Chrome signed in to Google**: Add, save to Google Password
+      Manager. Default name "Google passkey". Unlock with it.
+- [ ] **Two passkeys** (one Apple, one Google) on the same site: both listed; each unlocks;
+      removing one leaves the other working.
+- [ ] **Browser without PRF / without a screen lock** (e.g. Firefox on Linux, or Safari 17): the
+      Passkeys card says why in plain words and shows no **Add passkey** button.
+- [ ] Cancel the Face ID / Touch ID prompt at unlock: you land on the passphrase form with
+      "cancelled or timed out … Unlock with your passphrase instead". The passphrase works.
+- [ ] **Other site**: a passkey added on the Firebase address shows as "other site
+      (….web.app)" on the GitHub Pages address, and vice versa; the unlock screen there offers
+      only the passphrase until you add a passkey on that address too.
+- [ ] Add a passkey on the phone while the laptop is offline; change the passphrase on the
+      laptop; bring the laptop online. Both devices end up with the passkey **and** the new
+      passphrase (vault.json is merged, not overwritten).
+- [ ] Change passphrase in Settings: the passkey still unlocks.
+- [ ] Recovery-word unlock still forces a new passphrase; the passkey keeps working afterwards.
+- [ ] Auto-lock (set 1 minute): locks as before; passkey unlock afterwards works.
+- [ ] READ_ONLY build: **Unlock with passkey** works; no Add/Remove buttons.
+- [ ] `vault.json` in Drive now has a `"type": "webauthn-prf"` entry per passkey and nothing
+      readable.
+
+## U. App updates
+
+- [ ] With the app open (also the home-screen app), deploy a new version. Within an hour, or
+      when the app comes back to the foreground, "A new version of Vault Diary is available"
+      appears. **Reload** saves the open entry and loads the new version (you unlock again).
+
 ## H. Final recovery drill (do this before trusting the app)
 
 1. [ ] Write **10 entries** over several dates, with mixed attachments: at least one photo, one
@@ -96,3 +136,5 @@ devices can show. Use a phone and a laptop. Tick each box.
        `python3 recovery/recover.py ~/Downloads/VaultDiary-*.zip -o ~/recovered` → enter the
        passphrase. Check the same 10 entries and all attachments. Run again with `--words`.
 9. [ ] Sign in to the app again: unlock with your passphrase and see all 10 entries.
+10. [ ] Phase 2: do the drill on a vault with at least one passkey. recovery.html and recover.py
+        open it with the passphrase and the words exactly as before.

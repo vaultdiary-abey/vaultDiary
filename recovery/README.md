@@ -1,7 +1,8 @@
 # Vault Diary recovery tools
 
 Two independent ways to get your diary back **without the app, without Google sign-in and without
-the internet**. Both need your passphrase _or_ your 24 recovery words.
+the internet**. Both need your passphrase _or_ your 24 recovery words. (Passkeys can't be used
+here: they only work inside the app, on the site where they were made.)
 
 First get the encrypted files onto your computer, either:
 
