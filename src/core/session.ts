@@ -16,6 +16,7 @@ import {
   type Entry,
   type EntrySummary,
 } from '../model/entry'
+import { blobType } from '../media/kind'
 import { KV, type EntryRecord, type VaultDB } from '../storage/db'
 import { Emitter } from './emitter'
 
@@ -210,11 +211,16 @@ export class VaultSession extends Emitter {
     encrypted: Blob,
     onProgress?: (done: number, total: number) => void,
   ): Promise<Blob> {
-    return decryptToBlob(this.key, blobSource(encrypted), attachment.mime, {
-      expectedId: attachment.fileId,
-      expectedKind: 'file',
-      onProgress,
-    })
+    return decryptToBlob(
+      this.key,
+      blobSource(encrypted),
+      blobType(attachment.mime, attachment.name),
+      {
+        expectedId: attachment.fileId,
+        expectedKind: 'file',
+        onProgress,
+      },
+    )
   }
 
   // --- used by the sync engine ---

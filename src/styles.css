@@ -983,3 +983,100 @@ a:focus-visible {
 .passkey-list li:last-child {
   border-bottom: none;
 }
+
+/* ---------------------------------------------------------------- attachment viewer */
+
+button.attachment-name {
+  padding: 0;
+  text-align: left;
+  font: inherit;
+}
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: #f1f1f1;
+}
+
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: calc(0.5rem + env(safe-area-inset-top)) 0.75rem 0.5rem;
+  background: #111;
+}
+
+.viewer-bar .ghost {
+  color: #f1f1f1;
+  border-color: #444;
+  background: transparent;
+}
+
+.viewer-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.viewer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom));
+}
+
+.viewer-media {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.viewer-audio {
+  width: min(100%, 480px);
+}
+
+.viewer-message {
+  max-width: 420px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 1rem;
+}
+
+.center-row {
+  justify-content: center;
+}
+
+.pdf-pages {
+  align-self: stretch;
+  justify-content: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pdf-page canvas {
+  display: block;
+  background: #fff;
+  max-width: 100%;
+}
+
+.pdf-page.waiting canvas {
+  width: min(100%, 600px);
+  aspect-ratio: 1 / 1.414;
+}

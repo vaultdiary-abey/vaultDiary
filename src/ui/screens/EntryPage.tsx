@@ -3,6 +3,7 @@ import { formatBytes, saveBlob } from '../../lib/download'
 import { formatDay, formatTime, today } from '../../lib/dates'
 import { renderMarkdown } from '../../lib/markdown'
 import { displayTitle, MOODS, newEntry, type Attachment, type Entry } from '../../model/entry'
+import { AttachmentViewer } from '../AttachmentViewer'
 import { ErrorNote, ProgressBar } from '../components'
 import { useController } from '../controllerContext'
 import { href, navigate } from '../router'
@@ -92,14 +93,22 @@ function UploadState({ fileId }: { fileId: string }) {
 
 function AttachmentList(props: { attachments: Attachment[]; onRemove?: (a: Attachment) => void }) {
   const { download, progress, error, clearError } = useAttachmentDownload()
+  const [viewing, setViewing] = useState<Attachment | null>(null)
   if (!props.attachments.length) return null
   return (
     <div className="attachments">
+      {viewing && <AttachmentViewer attachment={viewing} onClose={() => setViewing(null)} />}
       <ul>
         {props.attachments.map((a) => (
           <li key={a.fileId}>
             <div className="attachment-main">
-              <span className="attachment-name">📎 {a.name}</span>
+              <button
+                className="attachment-name link"
+                onClick={() => setViewing(a)}
+                aria-label={`Open ${a.name}`}
+              >
+                📎 {a.name}
+              </button>
               <span className="muted small">{formatBytes(a.size)}</span>
               <UploadState fileId={a.fileId} />
             </div>
