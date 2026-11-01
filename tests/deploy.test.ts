@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { CSP } from '../csp.mjs'
 
@@ -47,3 +47,27 @@ describe('recovery/recovery.html', () => {
     expect(csp).toContain(`style-src ${sha(style)}`)
   })
 })
+
+describe('host independence', () => {
+  it('no source file hard-codes an app domain (the code uses location.hostname / origin)', () => {
+    const files = [
+      ...[...walkSource('src')],
+      'index.html',
+      'vite.config.ts',
+      'csp.mjs',
+      'firebase.json',
+      '.github/workflows/deploy.yml',
+    ]
+    const banned = /[a-z0-9-]+\.github\.io|\.web\.app|\.firebaseapp\.com/i
+    const hits = files.filter((f) => banned.test(readFileSync(f, 'utf8')))
+    expect(hits).toEqual([])
+  })
+})
+
+function* walkSource(dir: string): Generator<string> {
+  for (const name of readdirSync(dir)) {
+    const full = `${dir}/${name}`
+    if (statSync(full).isDirectory()) yield* walkSource(full)
+    else if (/\.(ts|tsx|mjs|js|html|css)$/.test(name)) yield full
+  }
+}

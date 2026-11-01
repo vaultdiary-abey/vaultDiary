@@ -11,17 +11,21 @@ minutes. You will:
 
 Throughout, replace:
 
-| Placeholder        | Example            | Where it comes from              |
-| ------------------ | ------------------ | -------------------------------- |
-| `YOUR-FIREBASE-ID` | `vault-diary-4821` | Firebase project ID (step 5)     |
-| `YOUR-GITHUB-NAME` | `abey-joseph`      | your GitHub user or organisation |
-| `YOUR-REPO`        | `vaultDiary`       | this repository's name           |
+| Placeholder        | Example            | Where it comes from                                        |
+| ------------------ | ------------------ | ---------------------------------------------------------- |
+| `YOUR-FIREBASE-ID` | `vault-diary-4821` | Firebase project ID (step 5)                               |
+| `YOUR-GITHUB-NAME` | `vaultdiary-abey`  | the GitHub organisation (or user) that owns the repository |
+| `YOUR-REPO`        | `vaultDiary`       | this repository's name                                     |
 
 Your three app addresses will be:
 
 - `http://localhost:5173` — your computer, while developing
 - `https://YOUR-FIREBASE-ID.web.app` — main site (Firebase also serves `…firebaseapp.com`)
-- `https://YOUR-GITHUB-NAME.github.io/YOUR-REPO/` — backup site (GitHub Pages)
+- `https://YOUR-GITHUB-NAME.github.io/YOUR-REPO/` — backup site (GitHub Pages), today
+  `https://vaultdiary-abey.github.io/vaultDiary/`
+
+The app never hard-codes any of these addresses. It works out where it is running from the
+browser (`location.hostname` / `location.origin`), so the same build works on every host.
 
 > **Important:** use **one** Google Cloud project and **one** OAuth client ID for all three
 > addresses. Vault Diary uses the `drive.file` permission, which only lets an app see files _that
@@ -88,7 +92,8 @@ Google review, so anyone with the link could create their own (separate) vault.
    - `http://localhost:4173` (for `npm run preview`)
    - `https://YOUR-FIREBASE-ID.web.app`
    - `https://YOUR-FIREBASE-ID.firebaseapp.com`
-   - `https://YOUR-GITHUB-NAME.github.io` (origins never include the `/YOUR-REPO/` path)
+   - `https://YOUR-GITHUB-NAME.github.io` (origins never include the `/YOUR-REPO/` path), today
+     `https://vaultdiary-abey.github.io`
 5. Leave **Authorised redirect URIs** empty. Click **Create**.
 6. Copy the **Client ID** (looks like `1234…-abc….apps.googleusercontent.com`). It is not a
    secret; it ends up in the public website. You don't need the client secret at all.
@@ -172,6 +177,30 @@ Push to the `main` branch (or **Actions → Build and deploy → Run workflow**)
 3. deploys that same `dist/` to Firebase Hosting **and** GitHub Pages.
 
 Pull requests run the checks and the build but don't deploy.
+
+## 8a. Moving the repository to another account or organisation
+
+The repository moved from a personal account to the `vaultdiary-abey` organisation, so the
+GitHub Pages address changed to `https://vaultdiary-abey.github.io/vaultDiary/`. GitHub does
+**not** redirect the old `…github.io` address of a transferred repository. Do this once after a
+move:
+
+1. **OAuth origins** (step 4): add `https://vaultdiary-abey.github.io`. Remove the old
+   `https://<old-name>.github.io` origin once nobody uses the old address any more.
+2. **Pages** (step 6): in the organisation's copy of the repository, Settings → Pages → Source:
+   **GitHub Actions**. Organisation owners may first need to allow Pages under the
+   organisation's Settings → Pages / Member privileges.
+3. **Variables and secret** (steps 5 and 7): repository variables and secrets move with the
+   repository, but check that `GOOGLE_CLIENT_ID`, `FIREBASE_PROJECT_ID`, `READ_ONLY` and
+   `FIREBASE_SERVICE_ACCOUNT` are still listed. If the organisation restricts Actions, allow
+   them under Settings → Actions → General.
+4. **Deploy**: re-run **Actions → Build and deploy** so the new Pages address has the current
+   build. Nothing in the code needs to change: the build is host-independent.
+5. **Each device**: the new address is a different _origin_ to the browser. Its offline copy,
+   installed home-screen app and passkeys are separate from the old address. Open the new
+   address, sign in with the same Google account (same OAuth client, so the same vault is
+   found), unlock with your passphrase, and re-install it to the home screen. Then remove the
+   old home-screen icon. Your diary in Google Drive is not affected.
 
 ## 9. First use
 
