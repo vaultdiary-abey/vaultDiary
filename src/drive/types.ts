@@ -37,7 +37,13 @@ export interface DriveClient {
   /** Moves to Drive's trash (recoverable there for 30 days). */
   trash(fileId: string): Promise<void>
   startResumable(parentId: string, name: string, size: number): Promise<string>
-  putSlice(sessionUrl: string, slice: Blob, start: number, total: number): Promise<ResumableStatus>
+  putSlice(
+    sessionUrl: string,
+    slice: Blob,
+    start: number,
+    total: number,
+    onProgress?: (sentInSlice: number) => void,
+  ): Promise<ResumableStatus>
   queryResumable(sessionUrl: string, total: number): Promise<ResumableStatus>
 }
 

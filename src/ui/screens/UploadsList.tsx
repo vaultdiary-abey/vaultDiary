@@ -24,12 +24,19 @@ export function UploadsList() {
               </span>
             </div>
             <ProgressBar value={u.uploaded} max={u.size} />
-            {!u.active && u.lastError && (
-              <p className="hint">
-                {u.lastError}
-                {u.attempts > 0 &&
-                  ` · attempt ${u.attempts}, next try ${new Date(u.nextAttemptAt).toLocaleTimeString()}`}
-              </p>
+            {u.active ? (
+              <p className="hint">Uploading…</p>
+            ) : (
+              u.lastError && (
+                <p className="hint">
+                  {u.lastError}
+                  {u.attempts > 0 &&
+                    ` · attempt ${u.attempts}, next try ${new Date(u.nextAttemptAt).toLocaleTimeString()}`}{' '}
+                  <button className="link small-link" onClick={() => void c.uploads.retryNow()}>
+                    Retry now
+                  </button>
+                </p>
+              )
             )}
           </li>
         ))}
