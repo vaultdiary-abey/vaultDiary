@@ -962,3 +962,24 @@ a:focus-visible {
     font-family: ui-monospace, Menlo, monospace;
   }
 }
+
+/* ---------------------------------------------------------------- passkeys */
+
+.passkey-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+}
+
+.passkey-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.passkey-list li:last-child {
+  border-bottom: none;
+}

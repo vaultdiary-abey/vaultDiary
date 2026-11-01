@@ -13,6 +13,7 @@ import { formatBytes, saveBlob } from '../../lib/download'
 import { localDate } from '../../model/entry'
 import { Card, ErrorNote, PassphraseInput, ProgressBar, Spinner } from '../components'
 import { useController } from '../controllerContext'
+import { Passkeys } from './Passkeys'
 import { UploadsList } from './UploadsList'
 
 function Preferences() {
@@ -93,7 +94,7 @@ function ChangePassphrase() {
       <h2>Change passphrase</h2>
       <p className="muted small">
         Only the key wrapper in vault.json changes; your entries are not re-encrypted. Your recovery
-        words keep working.
+        words and passkeys keep working.
       </p>
       <form className="stack" onSubmit={submit}>
         <PassphraseInput
@@ -312,6 +313,7 @@ export function Settings() {
       {c.readOnly && <p className="note">This is a read-only build: editing is turned off.</p>}
       <Preferences />
       <SyncDetails />
+      <Passkeys />
       {!c.readOnly && <ChangePassphrase />}
       <Storage />
       <Backup />

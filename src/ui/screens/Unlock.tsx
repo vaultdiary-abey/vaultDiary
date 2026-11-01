@@ -1,13 +1,52 @@
 import { useState, type FormEvent } from 'react'
 import { passphraseProblem } from '../../crypto/vault'
+import { canTryPasskey } from '../../core/webauthn'
 import { ErrorNote, PassphraseInput, Spinner } from '../components'
 import { useController } from '../controllerContext'
 
 export function Unlock() {
   const c = useController()
-  const [mode, setMode] = useState<'passphrase' | 'words'>('passphrase')
+  const passkeys = canTryPasskey() ? c.passkeysHere() : []
+  const [mode, setMode] = useState<'passkey' | 'passphrase' | 'words'>(
+    passkeys.length ? 'passkey' : 'passphrase',
+  )
   const [passphrase, setPassphrase] = useState('')
   const [words, setWords] = useState('')
+
+  const passkeyUnlock = async () => {
+    // Called straight from the tap: Safari needs the user gesture for WebAuthn.
+    const ok = await c.unlockWithPasskey()
+    if (!ok) setMode('passphrase')
+  }
+
+  if (mode === 'passkey' && passkeys.length) {
+    return (
+      <main className="gate">
+        <div className="logo" aria-hidden="true">
+          🔒
+        </div>
+        <h1>Vault Diary is locked</h1>
+        {c.account?.email && <p className="muted">{c.account.email}</p>}
+        <ErrorNote message={c.error} onClose={() => c.clearError()} />
+        {c.busy ? (
+          <Spinner label="Waiting for your passkey…" />
+        ) : (
+          <button className="primary big" onClick={() => void passkeyUnlock()} autoFocus>
+            Unlock with passkey
+          </button>
+        )}
+        <button
+          className="link"
+          onClick={() => {
+            c.clearError()
+            setMode('passphrase')
+          }}
+        >
+          Use passphrase
+        </button>
+      </main>
+    )
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -65,6 +104,17 @@ export function Unlock() {
           </button>
         )}
       </form>
+      {passkeys.length > 0 && mode === 'passphrase' && (
+        <button
+          className="link"
+          onClick={() => {
+            c.clearError()
+            setMode('passkey')
+          }}
+        >
+          Unlock with passkey instead
+        </button>
+      )}
       <button
         className="link"
         onClick={() => {
