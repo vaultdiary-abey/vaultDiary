@@ -82,6 +82,9 @@ export class Controller extends Emitter {
   readonly uploads: UploadQueue
   /** Set while the setup screens show the recovery words. */
   pendingSetup: NewVault | null = null
+  /** A newer version of the app has been downloaded and is waiting. */
+  updateAvailable = false
+  private updater: (() => Promise<void>) | null = null
   private pendingRawMk: Uint8Array | null = null
   private lastActivity = Date.now()
   private syncTimer: ReturnType<typeof setInterval> | null = null
@@ -542,6 +545,29 @@ export class Controller extends Emitter {
     this.location = null
     this.account = null
     this.set({ phase: 'signedOut', error: null })
+  }
+
+  // ---------------------------------------------------------------- app updates
+
+  setUpdater(updater: () => Promise<void>) {
+    this.updater = updater
+  }
+
+  setUpdateAvailable() {
+    this.updateAvailable = true
+    this.emit()
+  }
+
+  /** Saves open editors, then activates the new version (the page reloads and locks). */
+  async applyUpdate(): Promise<void> {
+    for (const flush of [...this.flushers]) {
+      try {
+        await flush()
+      } catch {
+        // keep going: the editor also saved on every change
+      }
+    }
+    await (this.updater ?? (async () => location.reload()))()
   }
 
   clearError() {

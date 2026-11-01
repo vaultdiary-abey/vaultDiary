@@ -10,7 +10,7 @@ import './styles.css'
 applyTheme()
 const controller = new Controller()
 void controller.init()
-registerServiceWorker()
+controller.setUpdater(registerServiceWorker(() => controller.setUpdateAvailable()))
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

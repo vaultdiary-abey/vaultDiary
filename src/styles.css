@@ -512,6 +512,10 @@ a:focus-visible {
   justify-content: space-between;
 }
 
+.banner-top {
+  padding-top: calc(0.6rem + env(safe-area-inset-top));
+}
+
 .banner-error {
   background: var(--error-bg);
   color: var(--text);
