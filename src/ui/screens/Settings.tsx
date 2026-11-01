@@ -3,6 +3,9 @@ import type { StorageReport } from '../../core/controller'
 import {
   AUTO_LOCK_CHOICES,
   getAutoLockMinutes,
+  getMaxVideoMinutes,
+  MAX_VIDEO_CHOICES,
+  setMaxVideoMinutes,
   getTheme,
   setAutoLockMinutes,
   setTheme,
@@ -19,6 +22,7 @@ import { UploadsList } from './UploadsList'
 function Preferences() {
   const [minutes, setMinutes] = useState(getAutoLockMinutes)
   const [theme, setThemeState] = useState<Theme>(getTheme)
+  const [maxVideo, setMaxVideo] = useState(getMaxVideoMinutes)
   return (
     <Card>
       <h2>This device</h2>
@@ -55,6 +59,27 @@ function Preferences() {
           <option value="light">Light</option>
           <option value="dark">Dark</option>
         </select>
+      </div>
+      <div className="field">
+        <label htmlFor="maxvideo">Longest video to record</label>
+        <select
+          id="maxvideo"
+          value={maxVideo}
+          onChange={(e) => {
+            const n = Number(e.target.value)
+            setMaxVideo(n)
+            setMaxVideoMinutes(n)
+          }}
+        >
+          {MAX_VIDEO_CHOICES.map((n) => (
+            <option key={n} value={n}>
+              {n} {n === 1 ? 'minute' : 'minutes'}
+            </option>
+          ))}
+        </select>
+        <p className="hint">
+          Recording stops by itself at this length. Video is roughly 20 MB a minute.
+        </p>
       </div>
     </Card>
   )

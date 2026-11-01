@@ -232,6 +232,102 @@ const [download] = await Promise.all([
 assert(download.suggestedFilename() === 'data.bin', 'other files: Download only')
 await closeViewer(page)
 
+console.log('Recording inside the app')
+const attachmentNames = () =>
+  page
+    .locator('.attachments button.attachment-name')
+    .evaluateAll((els) => els.map((e) => e.textContent.replace('📎', '').trim()))
+
+async function record(button, seconds) {
+  await page.getByRole('button', { name: button }).click()
+  await page.getByRole('button', { name: '● Record' }).click()
+  await page.locator('.rec-status').waitFor()
+  await page.waitForTimeout(seconds * 1000)
+  const status = await page.locator('.rec-status').innerText()
+  await page.getByRole('button', { name: '■ Stop' }).click()
+  await page.getByRole('button', { name: 'Keep' }).waitFor()
+  return status
+}
+
+let status = await record('🎙 Voice note', 2.2)
+assert(/0:0[2-3] \/ 60:00 · \d/.test(status), `live timer and size while recording ("${status}")`)
+await page.locator('.recorder audio').waitFor()
+await page.getByRole('button', { name: 'Keep' }).click()
+await page.getByRole('dialog').waitFor({ state: 'detached' })
+let names = await attachmentNames()
+const voice = names.find((n) => n.startsWith('Voice note '))
+assert(voice && /\.(webm|m4a|ogg)$/.test(voice), `voice note kept as an attachment (${voice})`)
+
+status = await record('🎥 Video', 1.5)
+await page.getByRole('button', { name: 'Re-take' }).click()
+await page.getByRole('button', { name: '● Record' }).click()
+await page.waitForTimeout(2000)
+await page.getByRole('button', { name: '■ Stop' }).click()
+await page.locator('.recorder video[controls]').waitFor()
+await page.screenshot({ path: `${SHOTS}/m4-video-review.png` })
+await page.getByRole('button', { name: 'Keep' }).click()
+await page.getByRole('dialog').waitFor({ state: 'detached' })
+names = await attachmentNames()
+const videos = names.filter((n) => n.startsWith('Video '))
+assert(
+  videos.length === 1 && /\.(webm|mp4)$/.test(videos[0]),
+  `re-take keeps one video (${videos})`,
+)
+
+await page.getByRole('button', { name: '📷 Photo' }).click()
+await page.getByRole('button', { name: 'Take photo' }).click()
+await page.locator('.recorder img').waitFor()
+await page.getByRole('button', { name: 'Keep' }).click()
+await page.getByRole('dialog').waitFor({ state: 'detached' })
+names = await attachmentNames()
+assert(
+  names.some((n) => /^Photo .*\.jpg$/.test(n)),
+  'photo from the camera kept',
+)
+await waitUploaded(page)
+assert(
+  (await page.evaluate(() => indexedDB.databases().then((d) => d.length))) > 0 &&
+    (await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const r = indexedDB.open('vaultdiary')
+          r.onsuccess = () => {
+            const q = r.result.transaction('recordings').objectStore('recordings').count()
+            q.onsuccess = () => resolve(q.result)
+          }
+        }),
+    )) === 0,
+  'kept recordings are removed from the crash-safety store',
+)
+
+await openViewer(page, videos[0])
+await page.waitForFunction(() => document.querySelector('.viewer video')?.readyState >= 1)
+assert(true, 'recorded video plays in the viewer')
+await closeViewer(page)
+
+console.log('Crash during a recording: recover it after reopening')
+await page.getByRole('button', { name: 'Done' }).click()
+await page.getByRole('link', { name: 'Today' }).click()
+await page.getByRole('link', { name: '+ New entry' }).click()
+await page.getByRole('button', { name: '🎥 Video' }).click()
+await page.getByRole('button', { name: '● Record' }).click()
+await page.waitForTimeout(3500)
+await page.reload() // the tab is gone mid-recording
+await page.getByLabel('Passphrase').fill(PASS)
+await page.getByRole('button', { name: 'Unlock', exact: true }).click()
+await page.getByText('An unfinished video').waitFor()
+await page.screenshot({ path: `${SHOTS}/m5-recover-banner.png` })
+await page.getByRole('button', { name: 'Recover' }).click()
+await page.getByRole('heading', { name: 'Recovered recording' }).waitFor()
+names = await attachmentNames()
+assert(names.length === 1 && names[0].startsWith('Video '), `recovered into a new entry (${names})`)
+await openViewer(page, names[0])
+await page.waitForFunction(() => document.querySelector('.viewer video')?.readyState >= 1, null, {
+  timeout: 15000,
+})
+assert(true, 'recovered partial video loads')
+await closeViewer(page)
+
 assert(errors.length === 0, `no page errors (${errors.join(' | ')})`)
 await browser.close()
 console.log('\nMedia e2e: all good.')

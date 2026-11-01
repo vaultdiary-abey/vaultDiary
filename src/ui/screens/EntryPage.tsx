@@ -3,7 +3,9 @@ import { formatBytes, saveBlob } from '../../lib/download'
 import { formatDay, formatTime, today } from '../../lib/dates'
 import { renderMarkdown } from '../../lib/markdown'
 import { displayTitle, MOODS, newEntry, type Attachment, type Entry } from '../../model/entry'
+import { canRecord } from '../../media/recorder'
 import { AttachmentViewer } from '../AttachmentViewer'
+import { RecordSheet, type RecordMode } from '../RecordSheet'
 import { ErrorNote, ProgressBar } from '../components'
 import { useController } from '../controllerContext'
 import { href, navigate } from '../router'
@@ -185,6 +187,7 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
   const [state, setState] = useState<SaveState>(isDraft ? 'new' : 'saved')
   const [error, setError] = useState<string | null>(null)
   const [encrypting, setEncrypting] = useState<{ name: string; done: number; total: number }[]>([])
+  const [recording, setRecording] = useState<RecordMode | null>(null)
   const draftRef = useRef(initial)
   const dirtyRef = useRef(false)
   const savedOnceRef = useRef(!isDraft)
@@ -273,6 +276,13 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
       }
     }
     setEncrypting([])
+  }
+
+  /** A kept recording or photo: encrypted on the device and queued like any attachment. */
+  const keepRecording = async (file: File) => {
+    const att = await c.attachFile(file)
+    update({ attachments: [...draftRef.current.attachments, att] })
+    await save()
   }
 
   const removeAttachment = async (a: Attachment) => {
@@ -383,6 +393,27 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
         </div>
       ))}
       <ErrorNote message={error} onClose={() => setError(null)} />
+      {recording && (
+        <RecordSheet
+          mode={recording}
+          entry={{ id: draft.id, date: draft.date }}
+          onKeep={keepRecording}
+          onClose={() => setRecording(null)}
+        />
+      )}
+      {canRecord() && (
+        <div className="row record-buttons">
+          <button className="ghost" onClick={() => setRecording('audio')}>
+            🎙 Voice note
+          </button>
+          <button className="ghost" onClick={() => setRecording('video')}>
+            🎥 Video
+          </button>
+          <button className="ghost" onClick={() => setRecording('photo')}>
+            📷 Photo
+          </button>
+        </div>
+      )}
       <div className="row">
         <label className="ghost button-like">
           Attach files

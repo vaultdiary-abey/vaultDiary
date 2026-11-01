@@ -41,6 +41,38 @@ export interface DeleteRecord {
   createdAt: number
 }
 
+/**
+ * An in-progress or unsaved recording. Its chunks are encrypted (src/crypto/localSeal.ts) with
+ * a per-recording key wrapped by MK. Stored in the clear: kind, MIME type, times, sizes and the
+ * id/date of the entry it was made for.
+ */
+export interface RecordingRecord {
+  id: string
+  kind: 'audio' | 'video'
+  mime: string
+  entryId: string
+  entryDate: string
+  startedAt: number
+  updatedAt: number
+  bytes: number
+  durationMs: number
+  chunks: number
+  key: { iv: string; ct: string }
+}
+
+export interface RecordingChunkRecord {
+  recId: string
+  seq: number
+  /** Sealed: IV | ciphertext | tag. */
+  data: Uint8Array<ArrayBuffer>
+}
+
+/** Encrypted thumbnail containers (.vdf, exactly as on Drive), so timelines work offline. */
+export interface ThumbRecord {
+  fileId: string
+  data: Uint8Array<ArrayBuffer>
+}
+
 export interface KvRecord {
   key: string
   value: unknown
@@ -51,6 +83,9 @@ export class VaultDB extends Dexie {
   uploads!: EntityTable<UploadRecord, 'fileId'>
   deletes!: EntityTable<DeleteRecord, 'path'>
   kv!: EntityTable<KvRecord, 'key'>
+  recordings!: EntityTable<RecordingRecord, 'id'>
+  recordingChunks!: Dexie.Table<RecordingChunkRecord, [string, number]>
+  thumbs!: EntityTable<ThumbRecord, 'fileId'>
 
   constructor(name = 'vaultdiary') {
     super(name)
@@ -59,6 +94,12 @@ export class VaultDB extends Dexie {
       uploads: 'fileId, nextAttemptAt',
       deletes: 'path',
       kv: 'key',
+    })
+    // Phase 2: crash-safe recordings and the encrypted thumbnail cache.
+    this.version(2).stores({
+      recordings: 'id',
+      recordingChunks: '[recId+seq], recId',
+      thumbs: 'fileId',
     })
   }
 
@@ -75,13 +116,17 @@ export class VaultDB extends Dexie {
   }
 
   async wipeAll(): Promise<void> {
-    await this.transaction('rw', [this.entries, this.uploads, this.deletes, this.kv], async () => {
-      await Promise.all([
-        this.entries.clear(),
-        this.uploads.clear(),
-        this.deletes.clear(),
-        this.kv.clear(),
-      ])
+    const tables = [
+      this.entries,
+      this.uploads,
+      this.deletes,
+      this.kv,
+      this.recordings,
+      this.recordingChunks,
+      this.thumbs,
+    ]
+    await this.transaction('rw', tables, async () => {
+      await Promise.all(tables.map((t) => t.clear()))
     })
   }
 }

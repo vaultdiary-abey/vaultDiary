@@ -1080,3 +1080,76 @@ button.attachment-name {
   width: min(100%, 600px);
   aspect-ratio: 1 / 1.414;
 }
+
+/* ---------------------------------------------------------------- recorder */
+
+.record-buttons {
+  flex-wrap: wrap;
+}
+
+.recorder .viewer-body {
+  gap: 0.75rem;
+}
+
+.viewfinder[data-facing='user'] {
+  transform: scaleX(-1);
+}
+
+.recorder-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  background: #111;
+}
+
+.recorder-bar .big {
+  min-width: 12rem;
+}
+
+.recorder-bar .ghost {
+  color: #f1f1f1;
+  border-color: #444;
+  background: transparent;
+}
+
+.rec-status {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.rec-dot {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: #fa5252;
+  animation: rec-pulse 1s infinite;
+}
+
+@keyframes rec-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.mic {
+  font-size: 4rem;
+  opacity: 0.6;
+}
+
+.mic.on {
+  opacity: 1;
+  animation: rec-pulse 1.5s infinite;
+}
+
+.danger-fill {
+  background: #e03131;
+  border-color: #e03131;
+  color: #fff;
+}
+
+.bar-spacer {
+  width: 4.5rem;
+}

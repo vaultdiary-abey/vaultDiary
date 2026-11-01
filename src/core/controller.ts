@@ -41,7 +41,8 @@ import {
   type VaultLocation,
 } from '../drive/vaultFolder'
 import { ZipWriter } from '../lib/zip'
-import type { Attachment } from '../model/entry'
+import { RecordingStore, type RecordingMeta } from '../media/recordingStore'
+import { newEntry, type Attachment, type Entry } from '../model/entry'
 import { KV, VaultDB } from '../storage/db'
 import { SyncEngine } from '../sync/sync'
 import { UploadQueue } from '../sync/uploads'
@@ -102,6 +103,9 @@ export class Controller extends Emitter {
   session: VaultSession | null = null
   sync: SyncEngine | null = null
   readonly uploads: UploadQueue
+  readonly recordings: RecordingStore
+  /** Recordings left over from a crash, a closed tab or a lock, offered for recovery. */
+  pendingRecordings: RecordingMeta[] = []
   /** Set while the setup screens show the recovery words. */
   pendingSetup: NewVault | null = null
   /** A newer version of the app has been downloaded and is waiting. */
@@ -137,6 +141,7 @@ export class Controller extends Emitter {
       () => this.location,
     )
     this.uploads.subscribe(changed)
+    this.recordings = new RecordingStore(this.db)
   }
 
   private set(patch: Partial<Pick<Controller, 'phase' | 'error' | 'busy'>>) {
@@ -605,6 +610,7 @@ export class Controller extends Emitter {
     this.syncTimer = setInterval(() => {
       if (document.visibilityState === 'visible') void sync.sync()
     }, SYNC_INTERVAL)
+    this.pendingRecordings = await this.recordings.list().catch(() => [])
     this.set({ phase: 'unlocked', error: null })
     await sync.refreshPending()
     void sync.sync()
@@ -646,6 +652,11 @@ export class Controller extends Emitter {
 
   private touch() {
     this.lastActivity = Date.now()
+  }
+
+  /** Counts as activity for auto-lock (e.g. while recording, when nobody touches the screen). */
+  noteActivity() {
+    this.touch()
   }
 
   private checkIdle() {
@@ -756,6 +767,53 @@ export class Controller extends Emitter {
     this.location = null
     this.account = null
     this.set({ phase: 'signedOut', error: null })
+  }
+
+  // ---------------------------------------------------------------- unfinished recordings
+
+  /**
+   * Adds a left-over recording to the entry it was made for (or a new entry on that day if the
+   * entry was never saved), then deletes it from the recording store. Returns the entry id.
+   */
+  async recoverRecording(id: string): Promise<string> {
+    const session = this.session
+    if (!session) throw new Error('The vault is locked.')
+    const meta = await this.recordings.get(id)
+    if (!meta) throw new Error('This recording is no longer on this device.')
+    const blob = await this.recordings.assemble(session.key, id)
+    if (blob.size === 0) throw new Error('Nothing was saved of this recording.')
+    const { recordingName } = await import('../media/recorder')
+    const file = new File([blob], recordingName(meta.kind, meta.mime, new Date(meta.startedAt)), {
+      type: meta.mime,
+    })
+    const attachment = await this.attachFile(file)
+    const existing = session.entries.get(meta.entryId)
+    const entry: Entry = existing
+      ? { ...existing, attachments: [...existing.attachments, attachment] }
+      : {
+          ...newEntry(meta.entryDate),
+          title: 'Recovered recording',
+          attachments: [attachment],
+        }
+    await session.save({ ...entry, updatedAt: new Date().toISOString() })
+    await this.discardRecording(id)
+    return entry.id
+  }
+
+  async discardRecording(id: string): Promise<void> {
+    await this.recordings.discard(id)
+    this.pendingRecordings = this.pendingRecordings.filter((r) => r.id !== id)
+    this.emit()
+  }
+
+  /** Encrypts a file into the upload queue and returns its attachment record. */
+  async attachFile(
+    file: File,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<Attachment> {
+    const session = this.session
+    if (!session) throw new Error('The vault is locked.')
+    return session.addAttachment(file, onProgress)
   }
 
   // ---------------------------------------------------------------- app updates
