@@ -48,7 +48,8 @@ TAG_LENGTH = 16
 CHUNK_OVERHEAD = IV_LENGTH + TAG_LENGTH
 MAX_HEADER_LENGTH = 64 * 1024
 MAX_CHUNK_SIZE = 64 * 1024 * 1024
-KINDS = ("entry", "file", "index")
+# "settings" (settings.vds, FORMAT.md revision 2) holds app settings; recovery skips it.
+KINDS = ("entry", "file", "index", "settings")
 ID_RE = re.compile(r"^[0-9a-f]{32}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VAULT_FORMAT = "vaultdiary-vault"
@@ -509,6 +510,7 @@ def parse_entry(raw, expected_id):
             size = a.get("size")
             attachments.append(
                 {
+                    **a,  # fields written by newer versions are kept
                     "fileId": a["fileId"],
                     "name": s(a.get("name"), "file"),
                     "mime": s(a.get("mime"), "application/octet-stream"),
@@ -517,6 +519,7 @@ def parse_entry(raw, expected_id):
             )
     tags = raw.get("tags") if isinstance(raw.get("tags"), list) else []
     return {
+        **raw,  # fields written by newer versions are kept
         "id": raw["id"],
         "date": raw["date"],
         "createdAt": s(raw.get("createdAt")),

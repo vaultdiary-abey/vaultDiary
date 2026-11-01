@@ -9,7 +9,7 @@ import { Setup } from './screens/Setup'
 import { Timeline } from './screens/Timeline'
 import { ResetPassphrase, Unlock } from './screens/Unlock'
 import { Finding, Unconfigured, Welcome } from './screens/Welcome'
-import { Spinner } from './components'
+import { Spinner, UpdateBanner } from './components'
 
 function Unlocked() {
   const route = useRoute()
@@ -39,6 +39,17 @@ function Unlocked() {
 
 export function App() {
   const c = useController()
+  if (c.phase === 'unlocked') return <Unlocked />
+  return (
+    <>
+      <UpdateBanner top />
+      <Gate />
+    </>
+  )
+}
+
+function Gate() {
+  const c = useController()
   switch (c.phase) {
     case 'boot':
       return (
@@ -59,6 +70,6 @@ export function App() {
     case 'resetPassphrase':
       return <ResetPassphrase />
     case 'unlocked':
-      return <Unlocked />
+      return null
   }
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { UpdateBanner } from './components'
 import { useController } from './controllerContext'
 import { href, type Route } from './router'
 
@@ -37,6 +38,7 @@ function Banners() {
   const needsAuth = c.online && (!c.auth.hasToken() || s?.state === 'needs-auth')
   return (
     <>
+      <UpdateBanner />
       {c.readOnly && (
         <div className="banner">Read-only copy: you can read and download, not edit.</div>
       )}

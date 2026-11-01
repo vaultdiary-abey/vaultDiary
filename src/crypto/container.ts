@@ -28,8 +28,9 @@ export const IV_LENGTH = 12
 export const TAG_LENGTH = 16
 export const CHUNK_OVERHEAD = IV_LENGTH + TAG_LENGTH
 
-export type FileKind = 'entry' | 'file' | 'index'
-const KINDS: readonly FileKind[] = ['entry', 'file', 'index']
+/** "settings" (settings.vds) is FORMAT.md revision 2: encrypted app settings such as templates. */
+export type FileKind = 'entry' | 'file' | 'index' | 'settings'
+const KINDS: readonly FileKind[] = ['entry', 'file', 'index', 'settings']
 
 export interface WrappedKey {
   iv: string

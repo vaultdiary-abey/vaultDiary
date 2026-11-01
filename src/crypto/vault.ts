@@ -33,6 +33,12 @@ export interface PassphraseWrapper {
   }
   iv: string
   ct: string
+  /**
+   * When this passphrase was set (FORMAT.md revision 2, optional). Used to pick the newest
+   * passphrase when two devices changed it before syncing. Missing in Phase 1 vaults, where the
+   * vault's own updatedAt stands in for it.
+   */
+  updatedAt?: string
 }
 
 export interface RecoveryWrapper {
@@ -42,9 +48,28 @@ export interface RecoveryWrapper {
   ct: string
 }
 
-/** Reserved for Phase 2 (WebAuthn PRF passkeys). Readers ignore wrapper types they don't know. */
+/** A passkey slot (WebAuthn PRF). See passkey.ts and FORMAT.md §3.3. */
 export interface PasskeyWrapper {
   type: 'webauthn-prf'
+  /** Slot id, 32 hex characters. Also part of the AAD. */
+  id: string
+  label: string
+  /** Password manager that holds the passkey, e.g. "icloud-keychain", or "unknown". */
+  provider: string
+  /** The site the passkey belongs to (location.hostname when it was made). */
+  rpId: string
+  /** base64url */
+  credentialId: string
+  /** base64url, 32 bytes: the PRF input. */
+  prfSalt: string
+  iv: string
+  ct: string
+  createdAt: string
+}
+
+/** A wrapper type this version doesn't know. Kept unchanged. */
+export interface UnknownWrapper {
+  type: string
   [field: string]: unknown
 }
 
@@ -56,10 +81,10 @@ export interface VaultFile {
   vaultId: string
   createdAt: string
   updatedAt: string
-  wrappers: KeyWrapper[]
+  wrappers: (KeyWrapper | UnknownWrapper)[]
 }
 
-export function mkAad(vaultId: string, type: KeyWrapper['type']): Uint8Array<ArrayBuffer> {
+export function mkAad(vaultId: string, type: 'passphrase' | 'recovery'): Uint8Array<ArrayBuffer> {
   return utf8(`VDV1/mk/${vaultId}/${type}`)
 }
 
@@ -106,7 +131,8 @@ export async function recoveryKek(
   return new Uint8Array(bits)
 }
 
-async function wrapMk(
+/** AES-256-GCM wraps the raw MK under a KEK. Shared by every wrapper type. */
+export async function wrapMk(
   kek: Uint8Array,
   rawMk: Uint8Array,
   aad: Uint8Array<ArrayBuffer>,
@@ -119,7 +145,8 @@ async function wrapMk(
   return { iv: toBase64(iv), ct: toBase64(ct) }
 }
 
-async function unwrapMk(
+/** Returns the raw MK, or null if the KEK or AAD is wrong. */
+export async function unwrapMk(
   kek: Uint8Array,
   wrapper: { iv: string; ct: string },
   aad: Uint8Array<ArrayBuffer>,
@@ -153,6 +180,7 @@ export async function makePassphraseWrapper(
       type: 'passphrase',
       kdf: { name: 'argon2id', version: 19, ...params, salt: toBase64(salt) },
       ...wrapped,
+      updatedAt: new Date().toISOString(),
     }
   } finally {
     wipe(kek)
@@ -242,7 +270,7 @@ function findWrapper<T extends KeyWrapper['type']>(
 ): Extract<KeyWrapper, { type: T }> {
   const w = vault.wrappers.find((x) => x.type === type)
   if (!w) throw new FormatError(`vault.json has no ${type} wrapper.`)
-  return w as Extract<KeyWrapper, { type: T }>
+  return w as unknown as Extract<KeyWrapper, { type: T }>
 }
 
 function checkArgon2(kdf: PassphraseWrapper['kdf']): Argon2Params {
@@ -302,7 +330,8 @@ export async function unlockWithPassphrase(vault: VaultFile, passphrase: string)
   }
 }
 
-/** Replaces the passphrase wrapper. MK and every encrypted file stay the same. */
+/** Replaces the passphrase wrapper. MK, every other wrapper (recovery, passkeys, unknown types)
+ * and every encrypted file stay the same. */
 export async function rewrapPassphrase(
   vault: VaultFile,
   rawMk: Uint8Array,

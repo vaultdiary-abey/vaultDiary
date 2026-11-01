@@ -1,4 +1,4 @@
-# Vault Diary file format, version 1
+# Vault Diary file format, version 1 (revision 2)
 
 This document is the complete description of what Vault Diary stores. Anyone with this document,
 the files, and the passphrase or the 24 recovery words can decrypt everything without the app.
@@ -15,6 +15,7 @@ The app creates a normal, visible folder in the user's Google Drive:
 VaultDiary/
   vault.json              master key, wrapped once per unlock method (plain JSON)
   index.vdi               encrypted index of entry summaries (optional, rebuildable)
+  settings.vds            encrypted app settings, e.g. templates (revision 2, optional)
   entries/<id>.vde        one encrypted diary entry each
   files/<id>.vdf          one encrypted attachment each
 ```
@@ -60,7 +61,8 @@ and every encrypted file stay exactly the same.
         "salt": "<base64, 16 bytes>"
       },
       "iv": "<base64, 12 bytes>",
-      "ct": "<base64, 48 bytes = 32-byte MK + 16-byte tag>"
+      "ct": "<base64, 48 bytes = 32-byte MK + 16-byte tag>",
+      "updatedAt": "2026-11-01T09:00:00.000Z"
     },
     {
       "type": "recovery",
@@ -76,7 +78,12 @@ and every encrypted file stay exactly the same.
 }
 ```
 
-Base64 is standard RFC 4648 with `+/` and `=` padding.
+Base64 is standard RFC 4648 with `+/` and `=` padding, except where a field is marked
+**base64url** (RFC 4648 §5, `-_`, no padding).
+
+`wrappers` may hold any number of passkey wrappers (§3.3) and wrapper types a reader doesn't
+know. Readers must ignore wrapper types they do not understand, and writers must keep them (and
+any unknown fields) unchanged. There is exactly one `passphrase` and one `recovery` wrapper.
 
 ### 3.1 Passphrase wrapper
 
@@ -86,6 +93,10 @@ KEK      = Argon2id(password, salt, m = memoryKiB, t = iterations, p = paralleli
                     version 0x13, output length 32 bytes)
 MK       = AES-256-GCM-Decrypt(key = KEK, iv, ct, AAD = ASCII "VDV1/mk/<vaultId>/passphrase")
 ```
+
+`updatedAt` (revision 2, optional) is when this passphrase was set. When two devices changed the
+passphrase before syncing, the newer one wins (§3.4). If it is missing (Phase 1 vaults), the
+vault's own `updatedAt` stands in for it.
 
 The app writes m = 65536 KiB (64 MiB), t = 3, p = 1. Readers accept 8192 ≤ m ≤ 1048576,
 1 ≤ t ≤ 32, 1 ≤ p ≤ 16 and refuse anything else (protects against a hostile vault.json).
@@ -104,10 +115,55 @@ MK  = AES-256-GCM-Decrypt(key = KEK, iv, ct, AAD = ASCII "VDV1/mk/<vaultId>/reco
 
 This is plain BIP39 entropy encoding only; there is no BIP39 PBKDF2 "seed" step.
 
-### 3.3 Reserved: passkey wrapper
+### 3.3 Passkey wrapper (revision 2)
 
-`"type": "webauthn-prf"` is reserved for a future WebAuthn PRF passkey wrapper (Phase 2). Readers
-must ignore wrapper types they do not understand and writers must keep them unchanged.
+A passkey (WebAuthn credential with the PRF extension, e.g. Face ID / Touch ID with iCloud
+Keychain, or Google Password Manager) can also unlock the vault. There can be several; each has
+its own wrapper and removing one never affects the others.
+
+```json
+{
+  "type": "webauthn-prf",
+  "id": "<32 hex: slot id>",
+  "label": "iPhone Face ID",
+  "provider": "icloud-keychain",
+  "rpId": "vaultdiary-abey.github.io",
+  "credentialId": "<base64url: WebAuthn credential id>",
+  "prfSalt": "<base64url, 32 bytes>",
+  "iv": "<base64, 12 bytes>",
+  "ct": "<base64, 48 bytes>",
+  "createdAt": "2026-11-01T09:00:00.000Z"
+}
+```
+
+```
+P   = WebAuthn PRF output of the credential for input prfSalt (extensions.prf.eval.first),
+      32 bytes, returned only after user verification
+KEK = HKDF-SHA256(IKM = P, salt = prfSalt, info = UTF-8("VaultDiary passkey wrap v1"), length 32)
+MK  = AES-256-GCM-Decrypt(key = KEK, iv, ct, AAD = ASCII "VDV1/mk/<vaultId>/webauthn-prf/<id>")
+```
+
+- `rpId` is the WebAuthn relying-party id the passkey was made for (the app's
+  `location.hostname`). A passkey only works on that site, so the GitHub Pages and Firebase
+  addresses each need their own.
+- `provider` (e.g. `icloud-keychain`, `google-password-manager`, `unknown`) and `label` are only
+  for display.
+- The PRF output can only be obtained from the authenticator, so recovery tools can't use this
+  wrapper. They open the vault with the passphrase or the recovery words; passkeys are only a
+  convenience.
+
+### 3.4 Merging vault.json between devices (revision 2)
+
+`vault.json` can change on several devices (a passkey added on each, a passphrase changed on
+another). A writer never overwrites Drive's copy with its own. It records its changes as
+operations and, before uploading, downloads Drive's copy and re-applies them on top:
+
+- wrappers that have an `id` (passkeys) are matched by `id`; adding one replaces a wrapper with
+  the same `id`;
+- a wrapper is removed only if that removal was made on this device;
+- of two passphrase wrappers, the one with the newest `updatedAt` wins;
+- everything else in Drive's copy is kept as it is. `updatedAt` of the file becomes the time of
+  the merge.
 
 ## 4. Encrypted container (`.vde`, `.vdf`, `.vdi`)
 
@@ -138,7 +194,7 @@ Every encrypted file uses the same container:
 | Field        | Meaning                                                                                            |
 | ------------ | -------------------------------------------------------------------------------------------------- |
 | `v`          | format version, always `1`                                                                         |
-| `kind`       | `"entry"` (`.vde`), `"file"` (`.vdf`) or `"index"` (`.vdi`)                                        |
+| `kind`       | `"entry"` (`.vde`), `"file"` (`.vdf`), `"index"` (`.vdi`) or `"settings"` (`.vds`, revision 2)     |
 | `id`         | the file's id; equals the `<id>` in its file name when written by the app                          |
 | `alg`        | always `"A256GCM"`                                                                                 |
 | `chunkSize`  | plaintext bytes per chunk; the app always writes 4 MiB (4194304). Readers must accept 1 … 67108864 |
@@ -217,7 +273,8 @@ All payloads are UTF-8 JSON. All metadata lives inside the ciphertext.
 - `mood` is an integer 1 (awful) … 5 (great), or `null`.
 - `attachments[].fileId` is the id of a `files/<fileId>.vdf` container; `name`, `mime` and `size`
   are the original file's name, MIME type and byte length.
-- Readers must keep fields they don't know.
+- Readers must keep fields they don't know, in the entry and in each attachment. A writer that
+  re-saves an entry it read must write unknown fields back unchanged.
 
 A **conflict copy** is an ordinary entry with a new id and " (conflict copy)" appended to the
 title. It is created when the same entry was edited on two devices before they synced.
@@ -251,6 +308,13 @@ The raw bytes of the original file. Name and type are stored in the entry that r
 The index only speeds up the first load on a new device. It can always be rebuilt from the
 entries and may be stale or missing; recovery tools ignore it. Its container `id` is random.
 
+### 5.4 Settings (`kind: "settings"`, revision 2)
+
+`settings.vds` in the folder root holds app settings such as entry templates (Phase 2,
+milestone D; its payload is documented there). Recovery tools skip it: it holds no diary
+content. Readers written before revision 2 report it as one "unknown file kind" problem and
+recover everything else normally.
+
 ## 6. Backup zip
 
 The app's "Encrypted backup" is a standard zip (stored, no compression, UTF-8 names) containing
@@ -261,3 +325,17 @@ The app's "Encrypted backup" is a standard zip (stored, no compression, UTF-8 na
 
 A future incompatible change will use a new magic (`VDV2`) and/or `v: 2`. Version 1 readers must
 refuse those rather than guess.
+
+Compatible additions don't change `v`. They are listed here as revisions; every addition is
+optional, and a vault using them still opens with any version 1 reader using the passphrase or
+recovery words.
+
+### Changelog
+
+- **Revision 1** (Phase 1): everything above except what is marked revision 2.
+- **Revision 2** (Phase 2):
+  - `webauthn-prf` passkey wrappers in `vault.json` (§3.3), previously only reserved.
+  - Optional `updatedAt` on the passphrase wrapper (§3.1) and the merge rules (§3.4).
+  - Container kind `"settings"` (`settings.vds`, §5.4); updated recovery tools skip it silently.
+  - Readers keep unknown entry and attachment fields (§5.1).
+  - New optional attachment fields are added in later milestones and listed in §5.1.

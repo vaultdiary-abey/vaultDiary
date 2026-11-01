@@ -70,3 +70,28 @@ Phase 1 only. Phase 2 (search, tags UI, thumbnails, media players, passkeys) is 
 - **Fixture**: the committed sample vault uses the app's real code and KDF parameters. One attachment
   is written with a 64 KiB chunk size (the header carries the chunk size) to keep the repo small
   while still testing multi-chunk decryption in Python; the 4 MiB boundaries are covered by Vitest.
+
+# Phase 2 plan
+
+Four milestones, each merged and tagged (`phase2-A` …) after review. Format additions are
+"revision 2" in FORMAT.md; nothing changes `v`.
+
+- **A. Passkey unlock** — WebAuthn PRF wrappers in vault.json, vault.json merge on push,
+  unknown entry/attachment fields kept, "Update available — reload", setup docs for the
+  `vaultdiary-abey` organisation, SECURITY.md.
+- **B. Media and recording** — viewers (photo, audio, video, PDF via bundled pdf.js), in-app
+  recording with crash-safe IndexedDB chunks, on-device thumbnails as `.vdf` (`thumbFileId`).
+- **C. Search, tags, mood, streaks** — on-device full-text search, filters, tag management,
+  streaks and a year heatmap.
+- **D. Templates and polish** — templates in `settings.vds` (kind `"settings"`), writing prompts.
+
+Decisions for A:
+
+- Add-passkey is three taps (passphrase → create → confirm). Each WebAuthn call gets its own tap
+  because Safari only allows them from a user gesture.
+- The passphrase wrapper gets an optional `updatedAt` so "newest passphrase wins" can be decided;
+  for Phase 1 wrappers the vault's `updatedAt` stands in.
+- Local vault.json changes are stored as pending operations in IndexedDB (`vaultOps`) and
+  re-applied to Drive's copy before each push.
+- The provider and default label come from the authenticator's AAGUID when it is a known one,
+  otherwise from the device type. They are display-only.

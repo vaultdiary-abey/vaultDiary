@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { useController } from './controllerContext'
 
 export function Spinner({ label }: { label?: string }) {
   return (
@@ -70,6 +71,28 @@ export function ProgressBar({ value, max }: { value: number; max: number }) {
       aria-valuemax={100}
     >
       <div className="progress-fill" style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+/** "Update available — reload", shown when a new version of the app has been deployed. */
+export function UpdateBanner({ top = false }: { top?: boolean }) {
+  const c = useController()
+  const [busy, setBusy] = useState(false)
+  if (!c.updateAvailable) return null
+  return (
+    <div className={`banner banner-action${top ? ' banner-top' : ''}`} role="status">
+      <span>A new version of Vault Diary is available.</span>
+      <button
+        className="primary small"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true)
+          void c.applyUpdate().finally(() => setBusy(false))
+        }}
+      >
+        {busy ? 'Reloading…' : 'Reload'}
+      </button>
     </div>
   )
 }

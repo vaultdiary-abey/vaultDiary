@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { randomBytes, randomId, utf8 } from '../src/crypto/bytes'
+import { fromBase64, randomBytes, randomId, utf8 } from '../src/crypto/bytes'
 import { encryptBytes } from '../src/crypto/container'
 import { WrongSecretError } from '../src/crypto/errors'
-import { createVault } from '../src/crypto/vault'
+import { passkeyWrappers, unwrapWithPasskey } from '../src/crypto/passkey'
+import { createVault, parseVault, unwrapWithPassphrase } from '../src/crypto/vault'
 import { crc32, ZipWriter } from '../src/lib/zip'
 import { newEntry, type Entry } from '../src/model/entry'
 import { collect, decryptAll, outputsToZip, unlock, type InputFile } from '../src/recovery/core'
@@ -102,6 +103,40 @@ describe('recovery core (used by recovery.html) on the committed fixture', () =>
       expect(result.problems).toEqual([])
       expect(await outputsAsMap(result.outputs)).toEqual(expected)
     }
+  })
+
+  it('the fixture has a passkey slot that opens the same master key', async () => {
+    const vault = parseVault(readFileSync(join(FIXTURE, 'VaultDiary', 'vault.json'), 'utf8'))
+    const [slot] = passkeyWrappers(vault)
+    expect(slot).toBeTruthy()
+    const viaPasskey = await unwrapWithPasskey(vault, slot, fromBase64(SECRETS.passkeyPrfOutput))
+    expect(viaPasskey).toEqual(await unwrapWithPassphrase(vault, SECRETS.passphrase))
+  })
+
+  it('skips a settings.vds container silently (FORMAT.md revision 2)', async () => {
+    const collected0 = await collect(fixtureInputs())
+    const mk = await unlock(collected0, { passphrase: SECRETS.passphrase })
+    const id = randomId()
+    const settings = await encryptBytes(mk, id, 'settings', utf8('{"templates":[]}'))
+    const inputs = [
+      ...fixtureInputs(),
+      { path: 'VaultDiary/settings.vds', blob: new Blob([settings]) },
+    ]
+    const collected = await collect(inputs)
+    const result = await decryptAll(mk, collected)
+    expect(result.problems).toEqual([])
+    expect(await outputsAsMap(result.outputs)).toEqual(expected)
+
+    // recover.py too
+    const root = mkdtempSync(join(tmpdir(), 'vd-settings-'))
+    cpSync(join(FIXTURE, 'VaultDiary'), join(root, 'VaultDiary'), { recursive: true })
+    writeFileSync(join(root, 'VaultDiary', 'settings.vds'), settings)
+    const out = join(root, 'out')
+    execFileSync('python3', ['recovery/recover.py', join(root, 'VaultDiary'), '-o', out], {
+      env: { ...process.env, VAULTDIARY_PASSPHRASE: SECRETS.passphrase },
+      stdio: 'pipe',
+    })
+    expect(walk(out)).toEqual(expected)
   })
 
   it('reports wrong secrets cleanly', async () => {

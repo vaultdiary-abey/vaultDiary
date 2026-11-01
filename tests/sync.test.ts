@@ -1,6 +1,17 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { randomBytes } from '../src/crypto/bytes'
+import { makePasskeyWrapper, passkeyWrappers, unwrapWithPasskey } from '../src/crypto/passkey'
+import {
+  createVault,
+  parseVault,
+  rewrapPassphrase,
+  unlockWithPassphrase,
+  unwrapWithPassphrase,
+  type PassphraseWrapper,
+  type VaultFile,
+} from '../src/crypto/vault'
+import { recordVaultOps } from '../src/sync/vaultOps'
 import { blobSource, decryptToBlob, importMasterKey } from '../src/crypto/container'
 import { VaultSession } from '../src/core/session'
 import { FakeDrive } from '../src/drive/fake'
@@ -306,6 +317,116 @@ describe('sync', () => {
     await sync.sync()
     expect(received).toContain('"vaultId"')
     expect(await b.db.getKv(KV.vaultJson)).toBe(received)
+  })
+})
+
+describe('vault.json sync between devices (merge, never overwrite)', () => {
+  const FAST = { memoryKiB: 8192, iterations: 1, parallelism: 1 }
+
+  async function vaultDevices() {
+    const { vault } = await createVault('vault sync passphrase', FAST)
+    const rawMk = await unwrapWithPassphrase(vault, 'vault sync passphrase')
+    const text = JSON.stringify(vault, null, 2)
+    await drive.createFile(location.rootId, 'vault.json', new Blob([text]))
+    const make = async () => {
+      const db = new VaultDB(`vault-${++n}`)
+      await db.setKv(KV.vaultJson, text)
+      const session = await VaultSession.open(db, mk)
+      const changes: string[] = []
+      const sync = new SyncEngine({
+        db,
+        session,
+        getDrive: () => drive,
+        getLocation: () => location,
+        readOnly: false,
+        onVaultChanged: (json) => changes.push(json),
+      })
+      return { db, session, sync, changes }
+    }
+    const passkey = async (label: string) => {
+      const prfOutput = randomBytes(32)
+      const wrapper = await makePasskeyWrapper(vault.vaultId, rawMk, {
+        label,
+        provider: 'unknown',
+        rpId: 'diary.example',
+        credentialId: randomBytes(16),
+        prfSalt: randomBytes(32),
+        prfOutput,
+      })
+      return { wrapper, prfOutput }
+    }
+    const onDrive = async () => {
+      const f = [...drive.files.values()].find((x) => x.name === 'vault.json' && !x.trashed)!
+      return parseVault(new TextDecoder().decode(f.data))
+    }
+    return { vault, rawMk, a: await make(), b: await make(), passkey, onDrive }
+  }
+
+  it('two devices each adding a passkey offline both end up with both', async () => {
+    const { a, b, passkey, onDrive, rawMk } = await vaultDevices()
+    await a.sync.sync()
+    await b.sync.sync()
+    const pa = await passkey('Phone (A)')
+    const pb = await passkey('Laptop (B)')
+    await recordVaultOps(a.db, [{ op: 'addWrapper', wrapper: pa.wrapper }])
+    await recordVaultOps(b.db, [{ op: 'addWrapper', wrapper: pb.wrapper }])
+    await a.sync.sync()
+    await b.sync.sync()
+    await a.sync.sync()
+    const labels = (v: VaultFile) => passkeyWrappers(v).map((w) => w.label)
+    expect(labels(await onDrive())).toEqual(['Phone (A)', 'Laptop (B)'])
+    for (const d of [a, b]) {
+      const local = parseVault((await d.db.getKv<string>(KV.vaultJson))!)
+      expect(labels(local)).toEqual(['Phone (A)', 'Laptop (B)'])
+      expect(await d.db.getKv(KV.vaultDirty)).toBe(false)
+      expect(await d.db.getKv(KV.vaultOps)).toEqual([])
+    }
+    expect(a.changes.length).toBeGreaterThan(0)
+    const final = await onDrive()
+    for (const p of [pa, pb])
+      expect(await unwrapWithPasskey(final, p.wrapper, p.prfOutput)).toEqual(rawMk)
+  })
+
+  it('a passkey added on one device while the passphrase changes on another keeps both', async () => {
+    const { vault, rawMk, a, b, passkey, onDrive } = await vaultDevices()
+    await a.sync.sync()
+    await b.sync.sync()
+    const pa = await passkey('Phone')
+    await recordVaultOps(a.db, [{ op: 'addWrapper', wrapper: pa.wrapper }])
+    const changed = await rewrapPassphrase(vault, rawMk, 'the new passphrase', FAST)
+    const wrapper = changed.wrappers.find((w) => w.type === 'passphrase') as PassphraseWrapper
+    await recordVaultOps(b.db, [{ op: 'setPassphrase', wrapper }])
+    await b.sync.sync()
+    await a.sync.sync()
+    await b.sync.sync()
+    for (const v of [
+      await onDrive(),
+      parseVault((await a.db.getKv<string>(KV.vaultJson))!),
+      parseVault((await b.db.getKv<string>(KV.vaultJson))!),
+    ]) {
+      expect(passkeyWrappers(v).map((w) => w.label)).toEqual(['Phone'])
+      await expect(unlockWithPassphrase(v, 'the new passphrase')).resolves.toBeTruthy()
+      await expect(unlockWithPassphrase(v, 'vault sync passphrase')).rejects.toThrow()
+      expect(await unwrapWithPasskey(v, pa.wrapper, pa.prfOutput)).toEqual(rawMk)
+    }
+  })
+
+  it('a removal on one device is not undone by another device pushing', async () => {
+    const { a, b, passkey, onDrive } = await vaultDevices()
+    const p1 = await passkey('One')
+    const p2 = await passkey('Two')
+    await recordVaultOps(a.db, [
+      { op: 'addWrapper', wrapper: p1.wrapper },
+      { op: 'addWrapper', wrapper: p2.wrapper },
+    ])
+    await a.sync.sync()
+    await b.sync.sync()
+    await recordVaultOps(a.db, [{ op: 'removeWrapper', id: p1.wrapper.id }])
+    const p3 = await passkey('Three')
+    await recordVaultOps(b.db, [{ op: 'addWrapper', wrapper: p3.wrapper }])
+    await a.sync.sync()
+    await b.sync.sync()
+    expect(passkeyWrappers(await onDrive()).map((w) => w.label)).toEqual(['Two', 'Three'])
   })
 })
 

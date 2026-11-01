@@ -1,9 +1,10 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { it } from 'vitest'
-import { randomId, utf8 } from '../src/crypto/bytes'
+import { randomBytes, randomId, toBase64, utf8, wipe } from '../src/crypto/bytes'
 import { bytesSource, encryptBytes, encryptContainer } from '../src/crypto/container'
-import { createVault } from '../src/crypto/vault'
+import { makePasskeyWrapper } from '../src/crypto/passkey'
+import { createVault, unwrapWithPassphrase } from '../src/crypto/vault'
 import { buildIndex, type Entry } from '../src/model/entry'
 import { attachmentPath, entryPath, entryToMarkdown, orphanPath } from '../src/recovery/export'
 
@@ -28,6 +29,20 @@ function pseudoRandom(size: number, seed: number): Uint8Array {
 it('writes the sample vault fixture', async () => {
   rmSync(ROOT, { recursive: true, force: true })
   const { vault, mk, recoveryWords } = await createVault(PASSPHRASE)
+  // Phase 2: a passkey slot, with a stand-in PRF output (a real one comes from the authenticator).
+  const passkeyPrfOutput = randomBytes(32)
+  const rawMk = await unwrapWithPassphrase(vault, PASSPHRASE)
+  vault.wrappers.push(
+    await makePasskeyWrapper(vault.vaultId, rawMk, {
+      label: 'Fixture passkey',
+      provider: 'icloud-keychain',
+      rpId: 'vaultdiary-abey.github.io',
+      credentialId: randomBytes(20),
+      prfSalt: randomBytes(32),
+      prfOutput: passkeyPrfOutput,
+    }),
+  )
+  wipe(rawMk)
 
   const files = [
     { fileId: randomId(), name: 'hello.txt', mime: 'text/plain', data: utf8('Hello, vault!\n') },
@@ -150,6 +165,7 @@ it('writes the sample vault fixture', async () => {
         note: 'Test fixture only. Never use these secrets for a real vault.',
         passphrase: PASSPHRASE,
         recoveryWords: recoveryWords.join(' '),
+        passkeyPrfOutput: toBase64(passkeyPrfOutput),
       },
       null,
       2,

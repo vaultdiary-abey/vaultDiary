@@ -90,6 +90,8 @@ export const KV = {
   vaultJson: 'vaultJson',
   vaultDriveId: 'vaultDriveId',
   vaultDirty: 'vaultDirty',
+  /** PendingVaultOp[]: local vault.json changes not yet merged into Drive's copy. */
+  vaultOps: 'vaultOps',
   vaultMd5: 'vaultMd5',
   location: 'location',
   indexData: 'indexData',

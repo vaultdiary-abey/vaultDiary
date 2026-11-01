@@ -6,14 +6,15 @@ A private, end-to-end encrypted diary that runs entirely in your browser and sto
 - Phone-first installable web app (PWA), works offline, light and dark themes.
 - Entries in Markdown, any number per day, autosave, mood, attachments of any type and size.
 - Timeline, month calendar, conflict-safe sync between devices.
-- Unlock with a passphrase or, if you forget it, with 24 recovery words.
+- Unlock with a passphrase, a passkey (Face ID, Touch ID, Apple or Google passkeys) or, if you
+  forget the passphrase, with 24 recovery words.
 - Two independent offline recovery tools: [`recovery/recovery.html`](recovery/) and
   [`recovery/recover.py`](recovery/recover.py).
 - No analytics, no trackers, no third-party scripts except Google's own sign-in library, and a
   strict Content Security Policy.
 
-Status: **Phase 1** (see [PLAN.md](PLAN.md)). Search, a tags UI, thumbnails, media players and
-passkeys are Phase 2.
+Status: **Phase 2** in progress (see [PLAN.md](PLAN.md)): passkey unlock is done; media viewers
+and recording, search and tags, templates follow. Security notes: [SECURITY.md](SECURITY.md).
 
 ## How it protects your diary
 
@@ -22,6 +23,7 @@ passkeys are Phase 2.
 | Master key                 | 256 random bits made on your device at setup; only ever in memory while unlocked; wiped on lock or after 10 idle minutes. |
 | Passphrase                 | Argon2id (64 MiB, 3 passes) → key that wraps the master key in `vault.json`.                                              |
 | Recovery words             | 24 BIP39 words = another 256-bit key (HKDF-SHA256) that also wraps the master key.                                        |
+| Passkeys (optional)        | WebAuthn PRF secret, released only after Face ID / Touch ID / screen lock → HKDF-SHA256 → wraps the master key.           |
 | Every entry and attachment | Its own random key; AES-256-GCM in 4 MiB chunks; tampering, reordering or truncation is detected.                         |
 | Google Drive               | Sees only random file names, sizes and times. Scope `drive.file`: the app can't see any other file in your Drive.         |
 | This device                | IndexedDB holds only encrypted copies plus sync bookkeeping (ids, timestamps). The Google token stays in memory.          |

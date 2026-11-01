@@ -8,6 +8,7 @@ import type { VaultSession } from '../core/session'
 import { randomId, utf8 } from '../crypto/bytes'
 import { encryptBytes } from '../crypto/container'
 import { parseVault } from '../crypto/vault'
+import { applyVaultOps, mergeVault, stripSeq, type PendingVaultOp } from '../crypto/vaultMerge'
 import {
   AuthError,
   DriveError,
@@ -130,7 +131,7 @@ export class SyncEngine extends Emitter {
         )
         if (!readOnly) await db.setKv(KV.vaultDirty, true)
       }
-      await this.syncVault(drive, location, vaultRemote)
+      await this.syncVault(drive, location, vaultRemote, problems)
       if (!readOnly) await this.processDeletes(drive, location)
       const indexRemote = newest(INDEX_FILE)
       const pulled = await this.pull(
@@ -157,18 +158,17 @@ export class SyncEngine extends Emitter {
     }
   }
 
-  private async syncVault(drive: DriveClient, location: VaultLocation, remote: DriveFile | null) {
+  private async syncVault(
+    drive: DriveClient,
+    location: VaultLocation,
+    remote: DriveFile | null,
+    problems: string[],
+  ) {
     const { db, readOnly } = this.deps
     const json = await db.getKv<string>(KV.vaultJson)
     if (!json) return
     if (!readOnly && (await db.getKv<boolean>(KV.vaultDirty))) {
-      const blob = new Blob([json], { type: 'application/json' })
-      const file = remote
-        ? await drive.updateFile(remote.id, blob)
-        : await drive.createFile(location.rootId, VAULT_FILE, blob)
-      await db.setKv(KV.vaultDriveId, file.id)
-      await db.setKv(KV.vaultMd5, file.md5)
-      await db.setKv(KV.vaultDirty, false)
+      await this.pushVault(drive, location, remote, json, problems)
       return
     }
     if (remote && remote.md5 !== (await db.getKv<string>(KV.vaultMd5))) {
@@ -183,6 +183,54 @@ export class SyncEngine extends Emitter {
       await db.setKv(KV.vaultMd5, remote.md5)
       if (text !== json) this.deps.onVaultChanged?.(text)
     }
+  }
+
+  /**
+   * Never overwrites Drive's vault.json: downloads it, re-applies this device's pending changes
+   * on top (see vaultMerge.ts) and uploads the result.
+   */
+  private async pushVault(
+    drive: DriveClient,
+    location: VaultLocation,
+    remote: DriveFile | null,
+    json: string,
+    problems: string[],
+  ) {
+    const { db } = this.deps
+    const local = parseVault(json)
+    const ops = (await db.getKv<PendingVaultOp[]>(KV.vaultOps)) ?? []
+    let merged = local
+    if (remote) {
+      const result = mergeVault(
+        await (await drive.download(remote.id)).text(),
+        local,
+        stripSeq(ops),
+      )
+      merged = result.vault
+      problems.push(...result.notes)
+    }
+    const text = JSON.stringify(merged, null, 2)
+    const blob = new Blob([text], { type: 'application/json' })
+    const file = remote
+      ? await drive.updateFile(remote.id, blob)
+      : await drive.createFile(location.rootId, VAULT_FILE, blob)
+    const pushedSeq = ops.reduce((max, o) => Math.max(max, o.seq), -1)
+    const finalText = await db.transaction('rw', db.kv, async () => {
+      // Changes made while we were uploading stay pending and are applied on top locally.
+      const remaining = ((await db.getKv<PendingVaultOp[]>(KV.vaultOps)) ?? []).filter(
+        (o) => o.seq > pushedSeq,
+      )
+      const finalText = remaining.length
+        ? JSON.stringify(applyVaultOps(merged, stripSeq(remaining)).vault, null, 2)
+        : text
+      await db.setKv(KV.vaultJson, finalText)
+      await db.setKv(KV.vaultOps, remaining)
+      await db.setKv(KV.vaultDriveId, file.id)
+      await db.setKv(KV.vaultMd5, file.md5)
+      await db.setKv(KV.vaultDirty, remaining.length > 0)
+      return finalText
+    })
+    if (finalText !== json) this.deps.onVaultChanged?.(finalText)
   }
 
   private async processDeletes(drive: DriveClient, location: VaultLocation) {

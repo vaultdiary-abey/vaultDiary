@@ -1,7 +1,6 @@
 // App orchestration: sign-in, vault discovery, setup, unlock/lock, auto-lock, sync scheduling.
 // React reads state from here (see useController); nothing in here touches the DOM except the
 // idle/online listeners and file downloads.
-import { wipe } from '../crypto/bytes'
 import { importMasterKey } from '../crypto/container'
 import { WrongSecretError } from '../crypto/errors'
 import {
@@ -10,10 +9,28 @@ import {
   parseVault,
   rewrapPassphrase,
   unlockWithPassphrase,
+  unwrapWithPassphrase,
   unwrapWithRecoveryWords,
   type NewVault,
+  type PassphraseWrapper,
   type VaultFile,
 } from '../crypto/vault'
+import type { VaultOp } from '../crypto/vaultMerge'
+import {
+  isPasskeyWrapper,
+  makePasskeyWrapper,
+  passkeysForHost,
+  unwrapWithPasskey,
+  wrapperForCredential,
+} from '../crypto/passkey'
+import { equalBytes, fromBase64Url, randomBytes, wipe } from '../crypto/bytes'
+import {
+  createPasskey,
+  evaluatePrf,
+  signalRemovedPasskey,
+  webauthnErrorMessage,
+  type CreatedPasskey,
+} from './webauthn'
 import { FakeAuth, GoogleAuth } from '../drive/auth'
 import { HttpDrive } from '../drive/http'
 import { AuthError, OfflineError, type About, type DriveClient } from '../drive/types'
@@ -28,6 +45,7 @@ import type { Attachment } from '../model/entry'
 import { KV, VaultDB } from '../storage/db'
 import { SyncEngine } from '../sync/sync'
 import { UploadQueue } from '../sync/uploads'
+import { recordVaultOps } from '../sync/vaultOps'
 import { CLIENT_ID, FAKE_DRIVE, READ_ONLY } from './config'
 import { Emitter } from './emitter'
 import { getAutoLockMinutes } from './prefs'
@@ -62,6 +80,10 @@ export interface StorageReport {
   localBytes: number | null
 }
 
+/** Where an "Add passkey" flow is. The raw MK is held only between steps 1 and 3. */
+export type PasskeySetupStep = { step: 'create' } | { step: 'confirm'; created: CreatedPasskey }
+
+const PASSKEY_SETUP_TIMEOUT = 5 * 60_000
 const SYNC_INTERVAL = 3 * 60_000
 const LOCAL_CHANGE_DELAY = 2000
 
@@ -82,7 +104,14 @@ export class Controller extends Emitter {
   readonly uploads: UploadQueue
   /** Set while the setup screens show the recovery words. */
   pendingSetup: NewVault | null = null
+  /** A newer version of the app has been downloaded and is waiting. */
+  updateAvailable = false
+  private updater: (() => Promise<void>) | null = null
   private pendingRawMk: Uint8Array | null = null
+  /** "Add passkey" flow: raw MK after re-entering the passphrase, wiped on finish/cancel/lock. */
+  passkeySetup: PasskeySetupStep | null = null
+  private passkeyRawMk: Uint8Array | null = null
+  private passkeyTimer: ReturnType<typeof setTimeout> | null = null
   private lastActivity = Date.now()
   private syncTimer: ReturnType<typeof setInterval> | null = null
   private changeTimer: ReturnType<typeof setTimeout> | null = null
@@ -332,14 +361,195 @@ export class Controller extends Emitter {
     }
   }
 
+  /** Passkey slots usable at this address (a passkey only works on the site it was made for). */
+  passkeysHere() {
+    return passkeysForHost(this.vault, location.hostname)
+  }
+
+  /**
+   * Must be called straight from a tap (Safari requires a user gesture for WebAuthn). Any
+   * failure leaves the passphrase as the way in, with a clear message.
+   */
+  async unlockWithPasskey(): Promise<boolean> {
+    const vault = this.vault
+    const slots = this.passkeysHere()
+    if (!vault || !slots.length) return false
+    this.set({ busy: true, error: null })
+    let raw: Uint8Array | null = null
+    try {
+      let result
+      try {
+        result = await evaluatePrf(
+          location.hostname,
+          slots.map((w) => ({
+            credentialId: fromBase64Url(w.credentialId),
+            prfSalt: fromBase64Url(w.prfSalt),
+          })),
+        )
+      } catch (e) {
+        throw new Error(`${webauthnErrorMessage(e)} Unlock with your passphrase instead.`, {
+          cause: e,
+        })
+      }
+      const wrapper = wrapperForCredential(vault, result.credentialId)
+      if (!wrapper) {
+        throw new Error('That passkey is not set up for this diary. Use your passphrase.')
+      }
+      if (!result.prfOutput) {
+        throw new Error(
+          "This passkey didn't return its unlock secret (this can happen when it is used from " +
+            'another device via a QR code). Use your passphrase, or a passkey on this device.',
+        )
+      }
+      try {
+        raw = await unwrapWithPasskey(vault, wrapper, result.prfOutput)
+      } finally {
+        wipe(result.prfOutput)
+      }
+      await this.openSession(await importMasterKey(raw))
+      return true
+    } catch (e) {
+      this.set({
+        error:
+          e instanceof WrongSecretError
+            ? 'This passkey could not unlock the diary. Use your passphrase.'
+            : (e as Error).message,
+      })
+      return false
+    } finally {
+      wipe(raw)
+      this.set({ busy: false })
+    }
+  }
+
+  // ---------------------------------------------------------------- passkey management
+
+  /** Step 1: re-enter the passphrase (the raw MK is needed to wrap it for the passkey). */
+  async beginAddPasskey(passphrase: string): Promise<void> {
+    if (!this.vault || !this.session || this.readOnly) throw new Error('Unlock first.')
+    this.cancelAddPasskey()
+    let raw: Uint8Array
+    try {
+      raw = await unwrapWithPassphrase(this.vault, passphrase)
+    } catch (e) {
+      if (e instanceof WrongSecretError) {
+        throw new Error('Your passphrase is wrong.', { cause: e })
+      }
+      throw e
+    }
+    this.passkeyRawMk = raw
+    this.passkeySetup = { step: 'create' }
+    this.passkeyTimer = setTimeout(() => this.cancelAddPasskey(), PASSKEY_SETUP_TIMEOUT)
+    this.emit()
+  }
+
+  /** Step 2 (from a tap): the password manager creates the passkey. Saves nothing yet. */
+  async createPasskeyCredential(): Promise<void> {
+    if (!this.passkeySetup || !this.passkeyRawMk) throw new Error('Start again.')
+    let created: CreatedPasskey
+    try {
+      created = await createPasskey({
+        rpId: location.hostname,
+        userName: this.account?.email ?? 'Vault Diary',
+        excludeCredentialIds: this.passkeysHere().map((w) => fromBase64Url(w.credentialId)),
+      })
+    } catch (e) {
+      throw new Error(webauthnErrorMessage(e), { cause: e })
+    }
+    if (!created.prfEnabled) {
+      this.cancelAddPasskey()
+      throw new Error(
+        "This passkey provider can't unlock the diary (it doesn't support the PRF feature), so " +
+          'nothing was saved. You can delete the new passkey from your password manager. ' +
+          'Try Apple Passwords / iCloud Keychain or Google Password Manager.',
+      )
+    }
+    this.passkeySetup = { step: 'confirm', created }
+    this.emit()
+  }
+
+  /**
+   * Step 3 (from a tap): uses the new passkey with a fresh random prfSalt, wraps MK with the
+   * PRF output, checks the wrapper opens, and only then saves it.
+   */
+  async finishAddPasskey(label: string): Promise<void> {
+    const setup = this.passkeySetup
+    const raw = this.passkeyRawMk
+    const vault = this.vault
+    if (!setup || setup.step !== 'confirm' || !raw || !vault) throw new Error('Start again.')
+    const prfSalt = randomBytes(32)
+    let result
+    try {
+      result = await evaluatePrf(
+        location.hostname,
+        [{ credentialId: setup.created.credentialId, prfSalt }],
+        'eval',
+      )
+    } catch (e) {
+      throw new Error(`${webauthnErrorMessage(e)} Nothing was saved; try again.`, { cause: e })
+    }
+    const { prfOutput } = result
+    try {
+      if (!equalBytes(result.credentialId, setup.created.credentialId)) {
+        throw new Error('A different passkey was used. Nothing was saved; try again.')
+      }
+      if (!prfOutput) {
+        throw new Error(
+          "This passkey didn't return its unlock secret, so it can't unlock the diary. " +
+            'Nothing was saved.',
+        )
+      }
+      const wrapper = await makePasskeyWrapper(vault.vaultId, raw, {
+        label: label.trim() || setup.created.defaultLabel,
+        provider: setup.created.provider,
+        rpId: location.hostname,
+        credentialId: setup.created.credentialId,
+        prfSalt,
+        prfOutput,
+      })
+      // Test-unwrap before saving: a wrapper that doesn't open must never be stored.
+      const check = await unwrapWithPasskey(vault, wrapper, prfOutput).catch(() => null)
+      const ok = !!check && equalBytes(check, raw)
+      wipe(check)
+      if (!ok || !isPasskeyWrapper(wrapper)) {
+        throw new Error('The new passkey failed its test unlock. Nothing was saved.')
+      }
+      await this.saveVaultOps([{ op: 'addWrapper', wrapper }])
+      this.cancelAddPasskey()
+      void this.sync?.sync()
+    } finally {
+      wipe(prfOutput)
+    }
+  }
+
+  cancelAddPasskey(): void {
+    if (this.passkeyTimer) clearTimeout(this.passkeyTimer)
+    this.passkeyTimer = null
+    wipe(this.passkeyRawMk)
+    this.passkeyRawMk = null
+    if (this.passkeySetup) {
+      this.passkeySetup = null
+      this.emit()
+    }
+  }
+
+  async removePasskey(id: string): Promise<void> {
+    if (this.readOnly) return
+    const wrapper = (this.vault?.wrappers ?? []).filter(isPasskeyWrapper).find((w) => w.id === id)
+    await this.saveVaultOps([{ op: 'removeWrapper', id }])
+    if (wrapper && wrapper.rpId === location.hostname) {
+      void signalRemovedPasskey(wrapper.rpId, wrapper.credentialId)
+    }
+    void this.sync?.sync()
+  }
+
   /** After a recovery-word unlock: the user must choose a new passphrase. */
   async setNewPassphrase(passphrase: string): Promise<void> {
     const raw = this.pendingRawMk
     if (!raw || !this.vault) return
     this.set({ busy: true, error: null })
     try {
-      const updated = await rewrapPassphrase(this.vault, raw, passphrase)
-      await this.saveVault(updated)
+      await this.savePassphrase(await rewrapPassphrase(this.vault, raw, passphrase))
       const mk = await importMasterKey(raw)
       wipe(raw)
       this.pendingRawMk = null
@@ -354,7 +564,7 @@ export class Controller extends Emitter {
   async changePassphrase(current: string, next: string): Promise<void> {
     if (!this.vault) throw new Error('No vault.')
     try {
-      await this.saveVault(await changePassphrase(this.vault, current, next))
+      await this.savePassphrase(await changePassphrase(this.vault, current, next))
     } catch (e) {
       if (e instanceof WrongSecretError)
         throw new Error('Your current passphrase is wrong.', { cause: e })
@@ -363,12 +573,15 @@ export class Controller extends Emitter {
     void this.sync?.sync()
   }
 
-  private async saveVault(vault: VaultFile) {
-    const text = JSON.stringify(vault, null, 2)
-    await this.db.setKv(KV.vaultJson, text)
-    await this.db.setKv(KV.vaultDirty, true)
-    this.vault = vault
+  /** Records local vault.json changes; the next sync merges them onto Drive's copy. */
+  private async saveVaultOps(ops: VaultOp[]) {
+    this.vault = await recordVaultOps(this.db, ops)
     this.emit()
+  }
+
+  private async savePassphrase(updated: VaultFile) {
+    const wrapper = updated.wrappers.find((w) => w.type === 'passphrase') as PassphraseWrapper
+    await this.saveVaultOps([{ op: 'setPassphrase', wrapper }])
   }
 
   private async openSession(mk: CryptoKey) {
@@ -405,6 +618,7 @@ export class Controller extends Emitter {
   }
 
   async lock(): Promise<void> {
+    this.cancelAddPasskey()
     if (this.pendingRawMk) {
       wipe(this.pendingRawMk)
       this.pendingRawMk = null
@@ -542,6 +756,29 @@ export class Controller extends Emitter {
     this.location = null
     this.account = null
     this.set({ phase: 'signedOut', error: null })
+  }
+
+  // ---------------------------------------------------------------- app updates
+
+  setUpdater(updater: () => Promise<void>) {
+    this.updater = updater
+  }
+
+  setUpdateAvailable() {
+    this.updateAvailable = true
+    this.emit()
+  }
+
+  /** Saves open editors, then activates the new version (the page reloads and locks). */
+  async applyUpdate(): Promise<void> {
+    for (const flush of [...this.flushers]) {
+      try {
+        await flush()
+      } catch {
+        // keep going: the editor also saved on every change
+      }
+    }
+    await (this.updater ?? (async () => location.reload()))()
   }
 
   clearError() {
