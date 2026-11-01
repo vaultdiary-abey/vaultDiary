@@ -153,7 +153,8 @@ export async function decryptAll(
           }),
         )
       }
-      // index.vdi only speeds up the app; recovery rebuilds everything from entries.
+      // index.vdi only speeds up the app and settings.vds holds app settings (templates);
+      // recovery rebuilds everything from entries and files and skips both silently.
     } catch (e) {
       problems.push(`${c.path}: ${(e as Error).message}`)
     }

@@ -38,7 +38,8 @@ page.on('request', (r) => {
 const errors = []
 page.on('pageerror', (e) => errors.push(e.message))
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
-await page.goto(`file://${resolve('recovery/recovery.html')}`)
+// RECOVERY_HTML=… checks another copy, e.g. an older recovery.html against today's fixture.
+await page.goto(`file://${resolve(process.env.RECOVERY_HTML ?? 'recovery/recovery.html')}`)
 
 async function run(label, files, secret, words) {
   console.log(label)

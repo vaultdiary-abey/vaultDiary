@@ -5,6 +5,8 @@ export const FIXTURE = 'tests/fixtures/sample-vault'
 export const SECRETS = JSON.parse(readFileSync(join(FIXTURE, 'secrets.json'), 'utf8')) as {
   passphrase: string
   recoveryWords: string
+  /** Stand-in PRF output for the fixture's passkey slot (base64). */
+  passkeyPrfOutput: string
 }
 
 export function walk(root: string): Map<string, Buffer> {
