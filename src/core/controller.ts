@@ -44,6 +44,9 @@ import { ZipWriter } from '../lib/zip'
 import { LARGE_FILE } from '../media/kind'
 import { RecordingStore, type RecordingMeta } from '../media/recordingStore'
 import { ThumbnailJob } from '../media/thumbJob'
+import { loadSearchCache, saveSearchCache } from '../search/searchCache'
+import { SearchIndex } from '../search/searchIndex'
+import { renameTag as renameTagIn, hasTag } from '../model/tags'
 import { makeThumbnail, thumbnailable } from '../media/thumbnail'
 import { newEntry, type Attachment, type Entry } from '../model/entry'
 import { KV, VaultDB } from '../storage/db'
@@ -115,6 +118,11 @@ export class Controller extends Emitter {
   private thumbSlots = 3
   private thumbWaiters: (() => void)[] = []
   private editing = new Map<string, number>()
+  /** Full-text index of the unlocked diary; in memory only, dropped on lock. */
+  private searchIndex: SearchIndex | null = null
+  private searchLoading: Promise<SearchIndex> | null = null
+  private searchTimer: ReturnType<typeof setTimeout> | null = null
+  private searchSaveTimer: ReturnType<typeof setTimeout> | null = null
   /** Set while the setup screens show the recovery words. */
   pendingSetup: NewVault | null = null
   /** A newer version of the app has been downloaded and is waiting. */
@@ -629,7 +637,10 @@ export class Controller extends Emitter {
     })
     let lastSynced: number | null = null
     this.unsubscribers = [
-      session.subscribe(() => this.emit()),
+      session.subscribe(() => {
+        this.emit()
+        this.scheduleSearchUpdate()
+      }),
       sync.subscribe(() => {
         this.emit()
         // After each completed sync, make any missing thumbnails (in the background).
@@ -653,6 +664,8 @@ export class Controller extends Emitter {
     await sync.refreshPending()
     void sync.sync()
     void this.uploads.kick()
+    // Get search ready in the background so the first search is instant.
+    setTimeout(() => void this.ensureSearch().catch(() => {}), 1500)
   }
 
   /** Editors register a flush so typing isn't lost when the vault locks. */
@@ -681,6 +694,7 @@ export class Controller extends Emitter {
     this.thumbJob?.stop()
     this.thumbJob = null
     this.dropThumbnails()
+    await this.dropSearch()
     if (this.syncTimer) clearInterval(this.syncTimer)
     if (this.changeTimer) clearTimeout(this.changeTimer)
     this.session?.lock()
@@ -891,6 +905,95 @@ export class Controller extends Emitter {
     this.location = null
     this.account = null
     this.set({ phase: 'signedOut', error: null })
+  }
+
+  // ---------------------------------------------------------------- search and tags
+
+  /** The search index, loaded from the encrypted local cache or built, then kept current. */
+  ensureSearch(): Promise<SearchIndex> {
+    const session = this.session
+    if (!session) return Promise.reject(new Error('The vault is locked.'))
+    if (this.searchIndex) return Promise.resolve(this.searchIndex)
+    this.searchLoading ??= (async () => {
+      const index = (await loadSearchCache(this.db, session.key)) ?? new SearchIndex()
+      if (this.session !== session) throw new Error('The vault is locked.')
+      const changed = index.update(session.list())
+      this.searchIndex = index
+      if (changed) this.scheduleSearchSave()
+      this.emit()
+      return index
+    })().finally(() => {
+      this.searchLoading = null
+    })
+    return this.searchLoading
+  }
+
+  /** Synchronous search once the index is ready (null until then). */
+  get searchReady(): SearchIndex | null {
+    return this.searchIndex
+  }
+
+  private scheduleSearchUpdate() {
+    if (!this.searchIndex) return
+    if (this.searchTimer) clearTimeout(this.searchTimer)
+    this.searchTimer = setTimeout(() => {
+      const session = this.session
+      if (!session || !this.searchIndex) return
+      if (this.searchIndex.update(session.list())) {
+        this.scheduleSearchSave()
+        this.emit()
+      }
+    }, 300)
+  }
+
+  private scheduleSearchSave() {
+    if (this.searchSaveTimer) clearTimeout(this.searchSaveTimer)
+    this.searchSaveTimer = setTimeout(() => {
+      const session = this.session
+      const index = this.searchIndex
+      if (session && index && !session.locked) {
+        void saveSearchCache(this.db, session.key, index).catch(() => {})
+      }
+    }, 3000)
+  }
+
+  /** On lock: saves a pending cache update (the key is still there), then drops the index. */
+  private async dropSearch() {
+    if (this.searchTimer) clearTimeout(this.searchTimer)
+    const session = this.session
+    const index = this.searchIndex
+    if (this.searchSaveTimer) {
+      clearTimeout(this.searchSaveTimer)
+      this.searchSaveTimer = null
+      if (session && index && !session.locked) {
+        // Bring it up to date first: the last edits may still be waiting for the update timer.
+        index.update(session.list())
+        await saveSearchCache(this.db, session.key, index).catch(() => {})
+      }
+    }
+    this.searchIndex = null
+  }
+
+  /**
+   * Renames a tag in every entry that has it. Entries still downloading can't be changed, so
+   * this waits until all entries are on this device. Returns how many entries changed.
+   */
+  async renameTag(from: string, to: string): Promise<number> {
+    const session = this.session
+    if (!session || this.readOnly) throw new Error('The vault is locked.')
+    if (session.summaries.size > 0) {
+      throw new Error(
+        `${session.summaries.size} entries are still downloading. Rename once they're all here.`,
+      )
+    }
+    let n = 0
+    for (const e of [...session.entries.values()]) {
+      if (!hasTag(e.tags, from)) continue
+      const tags = renameTagIn(e.tags, from, to)
+      await session.save({ ...e, tags, updatedAt: new Date().toISOString() })
+      n++
+    }
+    return n
   }
 
   // ---------------------------------------------------------------- unfinished recordings

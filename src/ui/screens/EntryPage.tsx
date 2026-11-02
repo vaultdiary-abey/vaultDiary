@@ -7,6 +7,8 @@ import { canRecord } from '../../media/recorder'
 import { AttachmentViewer } from '../AttachmentViewer'
 import { RecordSheet, type RecordMode } from '../RecordSheet'
 import { Thumb } from '../Thumb'
+import { TagEditor } from '../TagEditor'
+import { tagCounts } from '../../model/tags'
 import { ErrorNote, ProgressBar } from '../components'
 import { useController } from '../controllerContext'
 import { href, navigate } from '../router'
@@ -161,6 +163,15 @@ function EntryView({ entry }: { entry: Entry }) {
         )}
       </p>
       <h1>{displayTitle(entry)}</h1>
+      {entry.tags.length > 0 && (
+        <div className="tag-line">
+          {entry.tags.map((t) => (
+            <a key={t} className="tag" href={href({ name: 'timeline', tag: t })}>
+              #{t}
+            </a>
+          ))}
+        </div>
+      )}
       <div
         className="markdown"
         // Sanitised by DOMPurify in renderMarkdown.
@@ -192,6 +203,9 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
   const [error, setError] = useState<string | null>(null)
   const [encrypting, setEncrypting] = useState<{ name: string; done: number; total: number }[]>([])
   const [recording, setRecording] = useState<RecordMode | null>(null)
+  const [knownTags] = useState(() =>
+    tagCounts((c.session?.list() ?? []).map((i) => (i.kind === 'entry' ? i.entry : i.summary))),
+  )
   const draftRef = useRef(initial)
   const dirtyRef = useRef(false)
   const savedOnceRef = useRef(!isDraft)
@@ -369,6 +383,7 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
           ))}
         </div>
       </div>
+      <TagEditor tags={draft.tags} known={knownTags} onChange={(tags) => update({ tags })} />
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'write'} onClick={() => setTab('write')}>
           Write

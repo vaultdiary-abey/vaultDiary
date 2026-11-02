@@ -6,6 +6,7 @@ import { DayView } from './screens/DayView'
 import { EntryPage, NewEntry } from './screens/EntryPage'
 import { Settings } from './screens/Settings'
 import { Setup } from './screens/Setup'
+import { Insights } from './screens/Insights'
 import { Timeline } from './screens/Timeline'
 import { ResetPassphrase, Unlock } from './screens/Unlock'
 import { Finding, Unconfigured, Welcome } from './screens/Welcome'
@@ -25,7 +26,10 @@ function Unlocked() {
       page = <NewEntry date={route.date} />
       break
     case 'timeline':
-      page = <Timeline />
+      page = <Timeline key={route.tag ?? ''} tag={route.tag} />
+      break
+    case 'insights':
+      page = <Insights year={route.year} />
       break
     case 'calendar':
       page = <Calendar month={route.month} />
