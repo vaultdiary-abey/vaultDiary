@@ -165,6 +165,22 @@ await page.getByRole('button', { name: 'Unlock with passkey' }).click()
 await page.getByRole('button', { name: 'Lock now' }).waitFor()
 assert(true, 'passkey still unlocks after the passphrase change')
 
+console.log('Export can be confirmed with the passkey (Phase 3)')
+await page.getByRole('link', { name: 'Today' }).click()
+await page.getByRole('link', { name: '+ New entry' }).click()
+await page.getByLabel('Entry text').fill('Something to export')
+await page.waitForTimeout(1200)
+await page.getByRole('button', { name: 'Done' }).click()
+await page.getByRole('link', { name: 'Settings' }).click()
+const exportCard = page.locator('.card.export')
+await exportCard.getByRole('button', { name: 'Export…' }).click()
+const [exported] = await Promise.all([
+  page.waitForEvent('download'),
+  exportCard.getByRole('button', { name: /Confirm with passkey/ }).click(),
+])
+assert(/^VaultDiary-export-.*\.zip$/.test(exported.suggestedFilename()), 'export after Face ID')
+await page.getByRole('link', { name: 'Today' }).click()
+
 console.log('Failure falls back to the passphrase with a clear message')
 await page.getByRole('button', { name: 'Lock now' }).click()
 await a.cdp.send('WebAuthn.setUserVerified', {

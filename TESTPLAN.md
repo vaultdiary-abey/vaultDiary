@@ -1,4 +1,4 @@
-# Manual test plan (Phases 1 and 2)
+# Manual test plan (Phases 1, 2 and 3)
 
 Automated coverage: `npm test` (crypto, format, sync, upload queue, recovery core, cross-check with
 `recover.py`), `npm run test:py` (recover.py) and `npm run test:e2e` (real browser against the fake
@@ -186,6 +186,34 @@ Use a real device for each row. "Add" = Settings → Passkeys → **Add passkey*
       recover everything with no problems; an old Phase 1 copy reports `settings.vds` as one
       problem and recovers everything else.
 
+## X. On this day, nudge, backup reminder, export (Phase 3, milestone A)
+
+- [ ] **On this day**: write an entry dated exactly one year ago today (Today → ‹ … or + New entry
+      and change the date) and one two years ago. Today shows an "On this day" card with both,
+      newest year first; tapping one opens it. With no such entries the card is not shown.
+- [ ] **Nudge**: Settings → This device → "Remind me to write" is on at 20:00. Set it to a time a
+      few minutes ago. With no entry today, Today shows "No entry yet today" (green). **Not
+      today** hides it until tomorrow. Write an entry: it doesn't come back. Turn the setting off:
+      it never shows. No notification permission is ever asked.
+- [ ] **Backup reminder**: on a vault created more than 30 days ago that has never been backed
+      up (or whose last backup is older than 30 days), Today and Settings show "Back up now".
+      Tap it on the iPhone: the backup .zip downloads (Files → Downloads) and the banner goes
+      away. Settings → Backup shows "Last encrypted backup: <today>". On the laptop, after a sync,
+      the reminder is gone there too.
+- [ ] After reopening the installed iPhone app (Google sign-in expired), **Back up now** asks
+      for Google sign-in first, then downloads.
+- [ ] **Export, Markdown**: Settings → Export → This month → Markdown → **Export…**. A warning
+      says the files will NOT be encrypted. A wrong passphrase is refused. With the right one
+      (or **Confirm with passkey** → Face ID) a `VaultDiary-export-….zip` downloads. Open it:
+      `entries/<date>/<title>-<id>.md` files you can read, attachments in `files/` open.
+- [ ] **Export, PDF**: same with **PDF (print view)**. A clean page shows the entries (oldest
+      first) with dates, titles, text and photos; voice notes and videos are listed by name.
+      **Print / Save as PDF** → on iPhone: Share sheet / Print → pinch out the preview → Save to
+      Files; on laptop Chrome: Destination "Save as PDF". The PDF has no app buttons in it.
+      **Close** returns to Settings.
+- [ ] Each export asks for the passphrase / passkey again. Locking while the print view is open
+      closes it.
+
 ## U. App updates
 
 - [ ] With the app open (also the home-screen app), deploy a new version. Within an hour, or
@@ -214,3 +242,5 @@ Use a real device for each row. "Add" = Settings → Passkeys → **Add passkey*
         recorded video and photos with thumbnails. recovery.html and recover.py open it with the
         passphrase and the words; recordings come out with their names (`Video ….webm/.mp4`,
         `Voice note ….m4a/.webm`) and play; no thumbnail files appear in the output.
+11. [ ] Phase 3: make the drill's backup zip after at least one earlier backup (so `settings.vds`
+        records it). Both recovery tools still recover everything with no problems.

@@ -1,4 +1,4 @@
-# Vault Diary file format, version 1 (revision 2)
+# Vault Diary file format, version 1 (revision 3)
 
 This document is the complete description of what Vault Diary stores. Anyone with this document,
 the files, and the passphrase or the 24 recovery words can decrypt everything without the app.
@@ -356,15 +356,19 @@ is random (a new one on every write, like the index). Payload:
       "deleted": true
     }
   ],
-  "showPrompts": { "value": true, "updatedAt": "2026-11-02T09:00:00.000Z" }
+  "showPrompts": { "value": true, "updatedAt": "2026-11-02T09:00:00.000Z" },
+  "lastBackup": { "value": "2026-11-02T09:30:00.000Z", "updatedAt": "2026-11-02T09:30:00.000Z" }
 }
 ```
 
 - A template's `title` is used for new entries; empty means the app's default title (the
   entry's date and its number among that day's entries, e.g. "2 Nov 2026 · Entry 2").
 - `deleted: true` is a tombstone, so a deletion isn't undone by another device's older copy.
-- Merging two copies: templates by `id`, the newer `updatedAt` wins; `showPrompts` likewise.
-  Unknown fields are kept.
+- Merging two copies: templates by `id`, the newer `updatedAt` wins; `showPrompts` and
+  `lastBackup` likewise. Unknown fields are kept.
+- `lastBackup` (revision 3, optional): when an encrypted backup zip (§6) was last made on any
+  device, as an ISO 8601 UTC time, or `null`. Missing means never. The app uses it for its
+  backup reminder only.
 - Recovery tools skip `settings.vds`: it holds no diary content. Readers written before revision
   2 report it as one "unknown file kind" problem and recover everything else normally.
 
@@ -396,3 +400,5 @@ recovery words.
     recovery tools skip thumbnail files; older ones export them as `…-unreferenced.bin`.
   - In-app recordings are ordinary attachments; their `mime` may include codec parameters.
   - Tags are now used (§5.1). Local-only container kind `"cache"` (§5.4), never on Drive.
+- **Revision 3** (Phase 3):
+  - Optional `lastBackup` in `settings.vds` (§5.5). Recovery tools skip `settings.vds` as before.

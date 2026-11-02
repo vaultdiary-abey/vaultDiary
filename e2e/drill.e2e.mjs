@@ -1,5 +1,6 @@
-// The recovery drill, automated: build a vault through the real app using every Phase 2 feature
-// (passkey, tags, template, voice note, video, camera photo, thumbnails, files), download the
+// The recovery drill, automated: build a vault through the real app using every Phase 2 and 3
+// feature (passkey, tags, template, voice note, video, camera photo, thumbnails, files, the
+// backup date in settings.vds), download the
 // encrypted backup, throw the browser away ("clear browser data"), then recover with
 // recovery.html (offline, recovery words) and recover.py (passphrase and words).
 //   APP_URL=http://localhost:4174/ node e2e/drill.e2e.mjs   (production-like build)
@@ -150,6 +151,17 @@ assert(
   true,
   'vault built: passkey, template, tags, mood, voice note, video, photo, PDF, 4 MiB+ file',
 )
+
+console.log('A first backup (Phase 3: its date is stored encrypted in settings.vds)')
+await Promise.all([
+  page.waitForEvent('download', { timeout: 60000 }),
+  page.getByRole('button', { name: /encrypted backup/ }).click(),
+])
+assert(
+  (await page.getByTestId('last-backup').innerText()).startsWith('Last encrypted backup:'),
+  'the backup date is recorded',
+)
+await page.locator('.badge', { hasText: 'Synced' }).waitFor({ timeout: 60000 })
 
 console.log('Encrypted backup, then clear the browser')
 const [dl] = await Promise.all([

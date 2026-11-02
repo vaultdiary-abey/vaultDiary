@@ -134,3 +134,32 @@ Decisions for D:
 - Default title (requested): an entry saved without a title gets "<date> · Entry <n>", where n is
   its place among that day's entries by creation time. The title field shows it greyed out
   beforehand. It is stored as the real title (so it shows in recovery output too).
+
+# Phase 3 plan
+
+Three milestones, each merged and tagged (`phase3-A` …) after review. Format additions are
+"revision 3" in FORMAT.md; nothing changes `v`.
+
+- **A. On this day, writing nudge, export, backup reminder.**
+- **B. Streaming playback** for large video and audio through the service worker (Range
+  requests; keys stay in the page).
+- **C. HEIC viewing copies** (`viewCopyFileId`) and plain-words "can't play this video".
+
+Decisions for A:
+
+- "On this day" uses the unlocked diary (decrypted entries plus index summaries), so it works
+  offline and finds entries still downloading. Only on Today; 29 Feb entries show on 28 Feb in
+  other years.
+- Writing nudge: per-device time (default 20:00, can be turned off); "Not today" lasts until
+  midnight. Shown on Today, re-checked every minute while open.
+- Backup reminder: the date of the last encrypted backup lives in `settings.vds` (`lastBackup`,
+  merged by timestamp) so a backup on the laptop also quiets the phone. A vault never backed up
+  counts from its creation. The banner waits until this device has synced at least once, so a
+  new device doesn't nag on stale settings. "Back up now" signs in to Google first if needed.
+- Export re-checks the passphrase (Argon2 unwrap) or a passkey (PRF unwrap) and allows one
+  export within 5 minutes. Markdown export reuses the recovery tools' layout and code
+  (`buildOutputs` in src/recovery/export.ts); a test checks the export of the fixture is
+  byte-identical to the recovery output. Entries still downloading block the export.
+- PDF: a print view (oldest entry first) and the browser's Print → Save as PDF. Photos are
+  scaled to at most 1600 px for print to keep memory low on phones; photos the browser can't
+  decode (HEIC on Chrome) print their thumbnail; audio, video and other files are listed.
