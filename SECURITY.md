@@ -66,6 +66,12 @@ What this does and doesn't rely on:
   memory while recording, so the last pieces are still saved (encrypted) if the diary locks
   mid-recording. Kept or discarded recordings are deleted from IndexedDB at once.
 
+## Templates and settings
+
+Templates and the writing-prompt switch are stored in `settings.vds`, encrypted like every entry
+(container kind `"settings"`), and synced through Drive. Writing prompts are built into the app;
+nothing is fetched.
+
 ## Search
 
 Search runs on the device. The full-text index (MiniSearch, bundled) lives in memory while the

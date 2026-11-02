@@ -16,6 +16,8 @@ import { formatBytes, saveBlob } from '../../lib/download'
 import { localDate } from '../../model/entry'
 import { Card, ErrorNote, PassphraseInput, ProgressBar, Spinner } from '../components'
 import { useController } from '../controllerContext'
+import { liveTemplates, setShowPrompts } from '../../model/settings'
+import { href } from '../router'
 import { Passkeys } from './Passkeys'
 import { UploadsList } from './UploadsList'
 
@@ -265,6 +267,33 @@ function Backup() {
   )
 }
 
+function Writing() {
+  const c = useController()
+  const session = c.session
+  if (!session || c.readOnly) return null
+  const n = liveTemplates(session.settings).length
+  return (
+    <Card>
+      <h2>Templates and prompts</h2>
+      <p className="small">
+        {n ? `${n} template${n === 1 ? '' : 's'}.` : 'No templates yet.'}{' '}
+        <a href={href({ name: 'templates', edit: null })}>Manage templates</a>
+      </p>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={session.settings.showPrompts.value}
+          onChange={(e) =>
+            void session.saveSettings(setShowPrompts(session.settings, e.target.checked))
+          }
+        />
+        Show a writing prompt on the Today page
+      </label>
+      <p className="hint">Templates and this choice sync to your other devices, encrypted.</p>
+    </Card>
+  )
+}
+
 function SyncDetails() {
   const c = useController()
   const s = c.sync?.status
@@ -337,6 +366,7 @@ export function Settings() {
       <h1>Settings</h1>
       {c.readOnly && <p className="note">This is a read-only build: editing is turned off.</p>}
       <Preferences />
+      <Writing />
       <SyncDetails />
       <Passkeys />
       {!c.readOnly && <ChangePassphrase />}

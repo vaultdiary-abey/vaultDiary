@@ -124,3 +124,13 @@ Decisions for C:
   stats and the tag list (with rename). Tag rename needs every entry downloaded first.
 - Streak: consecutive days with entries up to today; a day without an entry yet doesn't break
   it until it is over.
+
+Decisions for D:
+
+- settings.vds is merged between devices like vault.json is: templates by id (newest wins,
+  tombstones for deletions), the prompt switch by its own timestamp.
+- Writing prompts: 30 built-in prompts, one per day (rotating by date), "Another" steps on.
+  Nothing is fetched.
+- Default title (requested): an entry saved without a title gets "<date> · Entry <n>", where n is
+  its place among that day's entries by creation time. The title field shows it greyed out
+  beforehand. It is stored as the real title (so it shows in recovery output too).

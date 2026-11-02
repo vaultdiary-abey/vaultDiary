@@ -143,6 +143,12 @@ export const KV = {
   indexMd5: 'indexMd5',
   indexDriveId: 'indexDriveId',
   lastSyncedAt: 'lastSyncedAt',
+  /** settings.vds as on Drive (encrypted container, kind "settings"). */
+  settingsData: 'settingsData',
+  settingsDirty: 'settingsDirty',
+  /** Bumped on every local settings change, so sync never drops an edit made while it ran. */
+  settingsRev: 'settingsRev',
+  settingsMd5: 'settingsMd5',
   /** Encrypted search index (container kind "cache"), local only. */
   searchCache: 'searchCache',
   account: 'account',

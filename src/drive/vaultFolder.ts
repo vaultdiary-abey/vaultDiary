@@ -5,6 +5,7 @@ export const ROOT_NAME = 'VaultDiary'
 export const APP_PROPERTY: [string, string] = ['vaultdiary', 'root']
 export const VAULT_FILE = 'vault.json'
 export const INDEX_FILE = 'index.vdi'
+export const SETTINGS_FILE = 'settings.vds'
 
 export interface VaultLocation {
   rootId: string

@@ -1560,3 +1560,64 @@ a.heat:focus-visible {
 .tag-list li:last-child {
   border-bottom: none;
 }
+
+/* ---------------------------------------------------------------- templates and prompts */
+
+.prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.prompt-text {
+  margin: 0;
+  font-size: 1.05rem;
+  font-style: italic;
+}
+
+.prompt-card .row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.template-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.template-picker .chip {
+  text-decoration: none;
+}
+
+.template-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+}
+
+.template-list li a {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.template-body {
+  min-height: 30vh;
+}
+
+.label-like {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+label.check {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}

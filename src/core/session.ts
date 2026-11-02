@@ -17,6 +17,7 @@ import {
   type EntrySummary,
 } from '../model/entry'
 import { blobType } from '../media/kind'
+import { defaultSettings, parseSettings, type Settings } from '../model/settings'
 import { KV, type EntryRecord, type VaultDB } from '../storage/db'
 import { Emitter } from './emitter'
 
@@ -29,6 +30,8 @@ export class VaultSession extends Emitter {
   /** From index.vdi, for entries this device hasn't downloaded yet. */
   readonly summaries = new Map<string, EntrySummary>()
   readonly problems: string[] = []
+  /** Decrypted settings.vds (templates, prompts switch). */
+  settings: Settings = defaultSettings()
   /** Set by the app so local changes trigger a sync soon after. */
   onLocalChange: () => void = () => {}
 
@@ -49,7 +52,46 @@ export class VaultSession extends Emitter {
       }
     }
     await s.loadIndexCache()
+    await s.loadSettings()
     return s
+  }
+
+  private async loadSettings(): Promise<void> {
+    const data = await this.db.getKv<Uint8Array>(KV.settingsData)
+    if (!data) return
+    try {
+      this.settings = await this.decryptSettings(data)
+    } catch (e) {
+      this.problems.push(`Saved settings are unreadable: ${(e as Error).message}`)
+    }
+  }
+
+  async decryptSettings(data: Uint8Array): Promise<Settings> {
+    return parseSettings(await decryptJson<unknown>(this.key, data, { expectedKind: 'settings' }))
+  }
+
+  encryptSettings(settings: Settings): Promise<Uint8Array<ArrayBuffer>> {
+    return encryptJson(this.key, randomId(), 'settings', settings)
+  }
+
+  /** Saves settings locally (encrypted) and marks them for upload. */
+  async saveSettings(next: Settings): Promise<void> {
+    const data = await this.encryptSettings(next)
+    await this.db.transaction('rw', this.db.kv, async () => {
+      await this.db.setKv(KV.settingsData, data)
+      await this.db.setKv(KV.settingsDirty, true)
+      await this.db.setKv(KV.settingsRev, ((await this.db.getKv<number>(KV.settingsRev)) ?? 0) + 1)
+    })
+    this.settings = next
+    this.emit()
+    this.onLocalChange()
+  }
+
+  /** Used by sync: settings merged with another device's. */
+  async applySettings(next: Settings, data: Uint8Array): Promise<void> {
+    await this.db.setKv(KV.settingsData, data)
+    this.settings = next
+    this.emit()
   }
 
   get key(): CryptoKey {

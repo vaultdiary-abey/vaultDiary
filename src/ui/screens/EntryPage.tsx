@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { VaultSession } from '../../core/session'
 import { formatBytes, saveBlob } from '../../lib/download'
 import { formatDay, formatTime, today } from '../../lib/dates'
 import { renderMarkdown } from '../../lib/markdown'
-import { displayTitle, MOODS, newEntry, type Attachment, type Entry } from '../../model/entry'
+import {
+  defaultTitle,
+  displayTitle,
+  MOODS,
+  newEntry,
+  type Attachment,
+  type Entry,
+} from '../../model/entry'
+import { promptFor } from '../../model/prompts'
+import { defaultSettings, liveTemplates } from '../../model/settings'
 import { canRecord } from '../../media/recorder'
 import { AttachmentViewer } from '../AttachmentViewer'
 import { RecordSheet, type RecordMode } from '../RecordSheet'
@@ -18,13 +28,44 @@ const AUTOSAVE_DELAY = 800
 /** Unsaved new entries, so creating one doesn't remount the editor when its URL changes. */
 const drafts = new Map<string, Entry>()
 
-export function NewEntry({ date }: { date: string | null }) {
+export function NewEntry({
+  date,
+  template,
+  prompt,
+}: {
+  date: string | null
+  template?: string | null
+  prompt?: number | null
+}) {
+  const c = useController()
   useEffect(() => {
-    const draft = newEntry(date ?? today())
+    const day = date ?? today()
+    const draft = newEntry(day)
+    const t = template
+      ? liveTemplates(c.session?.settings ?? defaultSettings()).find((x) => x.id === template)
+      : undefined
+    if (t) {
+      draft.title = t.title
+      draft.body = t.body
+      draft.tags = [...t.tags]
+    } else if (prompt !== null && prompt !== undefined) {
+      draft.body = `> ${promptFor(day, prompt)}\n\n`
+    }
     drafts.set(draft.id, draft)
     navigate({ name: 'entry', id: draft.id, edit: true }, true)
-  }, [date])
+  }, [c, date, template, prompt])
   return null
+}
+
+/** An entry's place among its day's entries (by creation time), for the default title. */
+function entryNumberIn(session: VaultSession, e: Entry): number {
+  const earlier = (x: { id: string; date: string; createdAt: string }) =>
+    x.date === e.date && x.id !== e.id && x.createdAt <= e.createdAt
+  return (
+    [...session.entries.values()].filter(earlier).length +
+    [...session.summaries.values()].filter(earlier).length +
+    1
+  )
 }
 
 function isBlank(e: Entry): boolean {
@@ -224,6 +265,12 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
       if (!savedOnceRef.current && isBlank(current)) return
       dirtyRef.current = false
       const toSave = { ...current, updatedAt: new Date().toISOString() }
+      // No title: save it as "<date> · Entry n" (n = its place among that day's entries).
+      if (!toSave.title.trim()) {
+        toSave.title = defaultTitle(toSave.date, entryNumberIn(session, toSave))
+        draftRef.current = { ...draftRef.current, title: toSave.title }
+        setDraft(draftRef.current)
+      }
       setState('saving')
       try {
         await session.save(toSave)
@@ -240,6 +287,8 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
     savingRef.current = savingRef.current.then(run)
     return savingRef.current
   }, [session])
+
+  const entryNumber = (e: Entry) => entryNumberIn(session, e)
 
   const update = (patch: Partial<Entry>) => {
     const next = { ...draftRef.current, ...patch }
@@ -356,7 +405,8 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
       </div>
       <input
         className="title-input"
-        placeholder="Title"
+        // Shown greyed out; used as the title if you leave it empty.
+        placeholder={defaultTitle(draft.date, entryNumber(draft))}
         value={draft.title}
         onChange={(e) => update({ title: e.target.value })}
         aria-label="Title"

@@ -168,6 +168,24 @@ Use a real device for each row. "Add" = Settings → Passkeys → **Add passkey*
 - [ ] On a new device while entries are still downloading, search finds them by title and summary
       and says so; renaming a tag asks you to wait until everything has downloaded.
 
+## D. Templates, prompts, default title (Phase 2, milestone D)
+
+- [ ] **Default title**: new entry, leave the title empty (it shows e.g. "2 Nov 2026 · Entry 1"
+      greyed out), write some text → it is saved with that title. A second entry the same day is
+      "Entry 2". Typing your own title still works. Changing the date uses that day's number.
+- [ ] **Prompt**: Today shows a prompt; **Another** changes it; tomorrow shows a different one.
+      **Write about this** starts an entry quoting the prompt. **Hide prompts** hides it; Settings →
+      Templates and prompts turns it back on.
+- [ ] **Templates**: Settings → Manage templates → New template (name, optional title, text, tags)
+      → Save. On Today, "Start from a template" lists it; tapping it starts an entry with that text
+      and tags. Edit and delete a template.
+- [ ] **Two devices**: make a template on the phone, another on the laptop, both offline; bring both
+      online: both devices list both templates. Delete one on the phone: it disappears on the
+      laptop after sync. The prompt switch syncs too.
+- [ ] `settings.vds` in Drive is unreadable (encrypted). recovery.html and recover.py (new copies)
+      recover everything with no problems; an old Phase 1 copy reports `settings.vds` as one
+      problem and recovers everything else.
+
 ## U. App updates
 
 - [ ] With the app open (also the home-screen app), deploy a new version. Within an hour, or
