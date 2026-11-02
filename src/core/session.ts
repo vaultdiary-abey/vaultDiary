@@ -1,6 +1,6 @@
 // The unlocked vault: decrypted entries in memory, encrypted copies in IndexedDB.
 // Locking drops this object; the master key is a non-extractable CryptoKey referenced only here.
-import { isId, randomId } from '../crypto/bytes'
+import { randomId } from '../crypto/bytes'
 import {
   blobSource,
   decryptJson,
@@ -10,6 +10,7 @@ import {
 } from '../crypto/container'
 import {
   compareEntriesDesc,
+  derivedFileIds,
   parseEntry,
   parseIndex,
   type Attachment,
@@ -199,15 +200,17 @@ export class VaultSession extends Emitter {
 
   isReferenced(fileId: string): boolean {
     for (const e of this.entries.values()) {
-      if (e.attachments.some((a) => a.fileId === fileId || a.thumbFileId === fileId)) return true
+      if (e.attachments.some((a) => a.fileId === fileId || derivedFileIds(a).includes(fileId))) {
+        return true
+      }
     }
     return false
   }
 
-  /** Releases an attachment's file and its thumbnail (see releaseFile). */
+  /** Releases an attachment's file, its thumbnail and its viewing copy (see releaseFile). */
   async releaseAttachment(a: Attachment): Promise<void> {
     await this.releaseFile(a.fileId)
-    if (isId(a.thumbFileId)) await this.releaseFile(a.thumbFileId)
+    for (const id of derivedFileIds(a)) await this.releaseFile(id)
   }
 
   /**
@@ -227,14 +230,25 @@ export class VaultSession extends Emitter {
    * encrypted copy in IndexedDB so previews show offline. Returns its file id.
    */
   async addThumbnail(jpeg: Blob): Promise<string> {
+    return this.addDerivedFile(jpeg, true)
+  }
+
+  /** Encrypts a viewing copy of a HEIC photo into the upload queue (not cached locally). */
+  async addViewCopy(jpeg: Blob): Promise<string> {
+    return this.addDerivedFile(jpeg, false)
+  }
+
+  /** A file made from an attachment (thumbnail, viewing copy): encrypted and queued. */
+  private async addDerivedFile(jpeg: Blob, cacheLocally: boolean): Promise<string> {
     const fileId = randomId()
     const blob = await encryptToBlob(this.key, {
       id: fileId,
       kind: 'file',
       source: blobSource(jpeg),
     })
-    const data = new Uint8Array(await blob.arrayBuffer())
-    await this.db.thumbs.put({ fileId, data })
+    if (cacheLocally) {
+      await this.db.thumbs.put({ fileId, data: new Uint8Array(await blob.arrayBuffer()) })
+    }
     await this.queueUpload(fileId, blob)
     return fileId
   }
@@ -256,6 +270,7 @@ export class VaultSession extends Emitter {
   }
 
   /** Decrypts a thumbnail container into a JPEG Blob. */
+  /** Decrypts a thumbnail or a viewing copy (both JPEG). */
   async decryptThumbnail(fileId: string, encrypted: Blob): Promise<Blob> {
     return decryptToBlob(this.key, blobSource(encrypted), 'image/jpeg', {
       expectedId: fileId,

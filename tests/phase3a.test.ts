@@ -18,6 +18,7 @@ import {
 } from '../src/model/reminders'
 import { defaultSettings, mergeSettings, parseSettings, setLastBackup } from '../src/model/settings'
 import { collect, decryptAll, unlock } from '../src/recovery/core'
+import { attachmentPath, viewCopyPath } from '../src/recovery/export'
 import { FIXTURE, SECRETS, walk } from './fixtureFiles'
 
 describe('On this day', () => {
@@ -175,8 +176,15 @@ describe('export', () => {
     const recovered = await decryptAll(mk, collected)
     const files = new Map<string, Blob>()
     for (const o of recovered.outputs) files.set(o.path, o.blob)
-    const pathOf = (fileId: string) =>
-      [...files.keys()].find((p) => p.startsWith(`files/${fileId.slice(0, 8)}-`))!
+    // Where recovery put each file id (attachments by their name, viewing copies next to them).
+    const paths = new Map<string, string>()
+    for (const e of recovered.entries) {
+      for (const a of e.attachments) {
+        paths.set(a.fileId, attachmentPath(a.fileId, a.name))
+        if (a.viewCopyFileId) paths.set(a.viewCopyFileId, viewCopyPath(a.fileId, a.name))
+      }
+    }
+    const pathOf = (fileId: string) => paths.get(fileId)!
 
     const range = { from: '2000-01-01', to: '2100-01-01' }
     const { zip, problems } = await buildMarkdownExport(recovered.entries, range, async (a) =>

@@ -31,6 +31,14 @@ export function attachmentPath(fileId: string, name: string): string {
   return `files/${fileId.slice(0, 8)}-${safeFileName(name)}`
 }
 
+/**
+ * A HEIC photo's JPEG viewing copy (FORMAT.md revision 3) is exported next to the original:
+ * files/<id8>-IMG_0042.HEIC → files/<id8>-IMG_0042-view.jpg (id8 of the original).
+ */
+export function viewCopyPath(fileId: string, name: string): string {
+  return `files/${fileId.slice(0, 8)}-${safeFileName(name.replace(/\.[^.]*$/, ''))}-view.jpg`
+}
+
 export function orphanPath(fileId: string): string {
   return `files/${fileId.slice(0, 8)}-unreferenced.bin`
 }
@@ -58,6 +66,9 @@ export function entryToMarkdown(e: Entry, available: (fileId: string) => boolean
       lines.push(
         `- [${a.name.replace(/[[\]]/g, '')}](<../../${attachmentPath(a.fileId, a.name)}>) (${note})`,
       )
+      if (isId(a.viewCopyFileId) && available(a.viewCopyFileId)) {
+        lines.push(`  - [Viewing copy (JPEG)](<../../${viewCopyPath(a.fileId, a.name)}>)`)
+      }
     }
     lines.push('')
   }
@@ -90,6 +101,15 @@ export function buildOutputs(
       if (!named.has(a.fileId)) named.set(a.fileId, attachmentPath(a.fileId, a.name))
     }
   }
+  // Viewing copies of HEIC photos are exported next to their original.
+  const viewCopies = new Map<string, string>()
+  for (const e of [...sorted].reverse()) {
+    for (const a of e.attachments) {
+      if (isId(a.viewCopyFileId) && !viewCopies.has(a.viewCopyFileId)) {
+        viewCopies.set(a.viewCopyFileId, viewCopyPath(a.fileId, a.name))
+      }
+    }
+  }
   for (const e of sorted) {
     const md = entryToMarkdown(e, (id) => files.has(id))
     outputs.push({ path: entryPath(e), blob: new Blob([md], { type: 'text/markdown' }) })
@@ -100,8 +120,8 @@ export function buildOutputs(
     for (const a of e.attachments) if (isId(a.thumbFileId)) thumbs.add(a.thumbFileId)
   }
   for (const [id, blob] of files) {
-    if (!named.has(id) && thumbs.has(id)) continue
-    outputs.push({ path: named.get(id) ?? orphanPath(id), blob })
+    if (!named.has(id) && !viewCopies.has(id) && thumbs.has(id)) continue
+    outputs.push({ path: named.get(id) ?? viewCopies.get(id) ?? orphanPath(id), blob })
   }
   for (const [id, path] of named) {
     if (!files.has(id)) problems.push(`Attachment ${path} is missing from the selected files.`)

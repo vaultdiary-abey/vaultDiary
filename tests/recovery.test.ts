@@ -157,7 +157,8 @@ describe('recovery core (used by recovery.html) on the committed fixture', () =>
     victim.blob = new Blob([bytes])
     const collected = await collect(inputs)
     const result = await decryptAll(await unlock(collected, SECRETS), collected)
-    expect(result.entries).toHaveLength(3)
+    // One of the fixture's entries is damaged; the others are recovered.
+    expect(result.entries).toHaveLength(4)
     expect(result.problems.join('\n')).toMatch(/failed authentication/)
     const zip = await outputsToZip(result.outputs)
     expect(zip.size).toBeGreaterThan(0)

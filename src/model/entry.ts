@@ -8,6 +8,11 @@ export interface Attachment {
   size: number
   /** files/<id>.vdf holding a small JPEG preview (FORMAT.md revision 2). Optional. */
   thumbFileId?: string
+  /**
+   * files/<id>.vdf holding a JPEG viewing copy of a HEIC photo, longest side ≤ 4096 px
+   * (FORMAT.md revision 3), for browsers that can't show HEIC. Optional; the original is kept.
+   */
+  viewCopyFileId?: string
   /** Fields written by newer versions are kept unchanged. */
   [field: string]: unknown
 }
@@ -195,41 +200,50 @@ function canonical(value: unknown): string {
   return JSON.stringify(value)
 }
 
-function withoutThumbs(e: Entry): unknown {
+/** Files made on a device from an attachment: its thumbnail and its viewing copy. */
+export const DERIVED_FIELDS = ['thumbFileId', 'viewCopyFileId'] as const
+type DerivedField = (typeof DERIVED_FIELDS)[number]
+
+/** The ids of an attachment's derived files (thumbnail, viewing copy) that are set. */
+export function derivedFileIds(a: Attachment): string[] {
+  return DERIVED_FIELDS.map((f) => a[f]).filter(isId)
+}
+
+function withoutDerived(e: Entry): unknown {
   return {
     ...e,
     updatedAt: undefined,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    attachments: e.attachments.map(({ thumbFileId, ...a }) => a),
+    attachments: e.attachments.map(({ thumbFileId, viewCopyFileId, ...a }) => a),
   }
 }
 
 /**
- * Two devices may each add a thumbnail to the same old attachment (the background job runs on
- * every device). If two versions of an entry differ only in thumbFileId, they are merged instead
- * of making a conflict copy: Drive's thumbnails win, and this device's fill the gaps. Returns
- * null when the versions differ in anything else. `dropped` are this device's thumbnail files
- * that are no longer used.
+ * Two devices may each add a thumbnail or a viewing copy to the same old attachment (the
+ * background jobs run on every device). If two versions of an entry differ only in those
+ * derived files (thumbFileId, viewCopyFileId), they are merged instead of making a conflict
+ * copy: Drive's win, and this device's fill the gaps. Returns null when the versions differ in
+ * anything else. `dropped` are this device's derived files that are no longer used.
  */
 export function mergeThumbnailsOnly(
   local: Entry,
   remote: Entry,
 ): { merged: Entry; changed: boolean; dropped: string[] } | null {
-  if (canonical(withoutThumbs(local)) !== canonical(withoutThumbs(remote))) return null
+  if (canonical(withoutDerived(local)) !== canonical(withoutDerived(remote))) return null
   let changed = false
   const attachments = remote.attachments.map((r, i) => {
-    const mine = local.attachments[i]?.thumbFileId
-    if (!isId(r.thumbFileId) && isId(mine)) {
-      changed = true
-      return { ...r, thumbFileId: mine }
+    let next = r
+    for (const field of DERIVED_FIELDS) {
+      const mine = local.attachments[i]?.[field]
+      if (!isId(next[field]) && isId(mine)) {
+        changed = true
+        next = { ...next, [field as DerivedField]: mine }
+      }
     }
-    return r
+    return next
   })
-  const kept = new Set(attachments.map((a) => a.thumbFileId).filter(isId))
-  const dropped = local.attachments
-    .map((a) => a.thumbFileId)
-    .filter(isId)
-    .filter((t) => !kept.has(t))
+  const kept = new Set(attachments.flatMap(derivedFileIds))
+  const dropped = local.attachments.flatMap(derivedFileIds).filter((t) => !kept.has(t))
   return { merged: { ...remote, attachments }, changed, dropped }
 }
 

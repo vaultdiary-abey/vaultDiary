@@ -3,7 +3,9 @@
 //
 // The Markdown export uses the recovery tools' layout and code (src/recovery/export.ts), so an
 // export and a recovery of the same entries produce the same files.
+import { isId } from '../crypto/bytes'
 import { ZipWriter } from '../lib/zip'
+import { viewCopyName } from '../media/heic'
 import { compareEntriesDesc, type Attachment, type Entry } from '../model/entry'
 import { buildOutputs } from '../recovery/export'
 import type { ListItem } from './session'
@@ -82,7 +84,20 @@ export async function buildMarkdownExport(
   const problems: string[] = []
   const files = new Map<string, Blob>()
   const wanted = new Map<string, Attachment>()
-  for (const e of entries) for (const a of e.attachments) wanted.set(a.fileId, a)
+  for (const e of entries) {
+    for (const a of e.attachments) {
+      wanted.set(a.fileId, a)
+      // A HEIC photo's JPEG viewing copy goes next to the original (as in recovery).
+      if (isId(a.viewCopyFileId)) {
+        wanted.set(a.viewCopyFileId, {
+          fileId: a.viewCopyFileId,
+          name: viewCopyName(a.name),
+          mime: 'image/jpeg',
+          size: 0,
+        })
+      }
+    }
+  }
   let done = 0
   onProgress?.(done, wanted.size)
   for (const a of wanted.values()) {
