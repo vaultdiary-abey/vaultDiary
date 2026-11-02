@@ -243,6 +243,11 @@ exactly `8 + H + size + 28 × chunkCount`. Readers must reject:
 Readers must not output any plaintext of a chunk whose tag failed. Streaming readers that write
 earlier chunks to disk must delete the partial output when a later chunk fails.
 
+Random access (informative): chunk `i` starts at byte `8 + H + i × (chunkSize + 28)` and is
+`chunkSize + 28` bytes long (the last one `size − (chunkCount − 1) × chunkSize + 28`), so a
+reader can fetch and check any chunk on its own, e.g. with an HTTP Range request. The app
+streams audio and video this way; the format is unchanged.
+
 ## 5. Plaintext payloads
 
 All payloads are UTF-8 JSON. All metadata lives inside the ciphertext.

@@ -815,9 +815,21 @@ export class Controller extends Emitter {
 
   // ---------------------------------------------------------------- streaming playback
 
+  /** Set when a player's requests never reached the service worker: don't try again. */
+  private streamingFailed = false
+
   /** Can this page stream right now (a service worker controls it and answers)? */
   streamingAvailable(): Promise<boolean> {
+    if (this.streamingFailed) return Promise.resolve(false)
     return this.streams.available()
+  }
+
+  /**
+   * The browser bypassed the service worker for media (the request never reached the page).
+   * Until the app is reloaded, players use full decryption instead.
+   */
+  markStreamingUnavailable() {
+    this.streamingFailed = true
   }
 
   private waitForSignIn(): Promise<void> {

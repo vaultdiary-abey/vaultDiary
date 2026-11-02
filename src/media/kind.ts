@@ -2,7 +2,10 @@
 
 export type MediaKind = 'image' | 'audio' | 'video' | 'pdf' | 'other'
 
-/** Above this, the app warns before decrypting a file into memory (streaming is Phase 3). */
+/**
+ * Above this, the app warns before decrypting a whole file into memory. Audio and video stream
+ * instead when the browser allows it (Phase 3 B); the warning is for the fallback.
+ */
 export const LARGE_FILE = 200 * 1024 * 1024
 
 const EXT: Record<string, MediaKind> = {

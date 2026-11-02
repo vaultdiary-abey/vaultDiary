@@ -1835,3 +1835,8 @@ label.check {
   flex-wrap: wrap;
   margin-top: 0.5rem;
 }
+
+.viewer-signin {
+  border-radius: var(--radius);
+  margin-bottom: 0.75rem;
+}

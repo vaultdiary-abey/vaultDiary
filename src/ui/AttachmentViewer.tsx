@@ -1,6 +1,9 @@
-// Full-screen viewer for one attachment: decrypts it on this device into a Blob, shows it from
-// an object URL and revokes the URL on close. Anything the browser can't show gets "Download".
-import { useEffect, useRef, useState } from 'react'
+// Full-screen viewer for one attachment. Audio and video stream through the service worker
+// (only the chunks being played are downloaded and decrypted, Phase 3 B); everything else, and
+// audio/video when streaming isn't available, is decrypted on this device into a Blob, shown
+// from an object URL and revoked on close. Anything the browser can't show gets "Download".
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { OpenStream } from '../stream/host'
 import { formatBytes, saveBlob } from '../lib/download'
 import { LARGE_FILE, mediaKind } from '../media/kind'
 import type { PDFDocumentProxy } from '../media/pdf'
@@ -78,13 +81,8 @@ function PdfPage({ doc, page }: { doc: PDFDocumentProxy; page: number }) {
   )
 }
 
-export function AttachmentViewer({
-  attachment,
-  onClose,
-}: {
-  attachment: Attachment
-  onClose: () => void
-}) {
+/** Decrypts the whole file into memory (with a warning above 200 MB). */
+function FullViewer({ attachment, onClose }: { attachment: Attachment; onClose: () => void }) {
   const c = useController()
   const kind = mediaKind(attachment.mime, attachment.name)
   const large = attachment.size > LARGE_FILE
@@ -252,5 +250,205 @@ export function AttachmentViewer({
         {body}
       </div>
     </div>
+  )
+}
+
+/** "Google sign-in has expired — Continue" for a stream waiting on Drive. */
+function SignInBar({ onContinue }: { onContinue: () => void }) {
+  return (
+    <div className="banner banner-action viewer-signin" role="status">
+      <span>Google sign-in has expired. Playback is paused.</span>
+      <button className="primary small" onClick={onContinue}>
+        Continue
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Streams audio or video: the player asks for byte ranges, the service worker asks this page,
+ * and the page downloads and decrypts only the chunks needed. Calls `onFallback` when
+ * streaming can't be used, so the full-decrypt viewer takes over.
+ */
+function StreamViewer({
+  attachment,
+  kind,
+  onClose,
+  onFallback,
+}: {
+  attachment: Attachment
+  kind: 'audio' | 'video'
+  onClose: () => void
+  onFallback: () => void
+}) {
+  const c = useController()
+  const [stream, setStream] = useState<OpenStream | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [cantPlay, setCantPlay] = useState(false)
+  const [download, setDownload] = useState<{ done: number; total: number } | null>(null)
+  const media = useRef<HTMLVideoElement & HTMLAudioElement>(null)
+  const resumeAfterSignIn = useRef(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  useEffect(() => {
+    let live = true
+    let opened: OpenStream | null = null
+    void (async () => {
+      try {
+        if (!(await c.streamingAvailable())) {
+          if (live) onFallback()
+          return
+        }
+        opened = await c.openStream(attachment)
+        if (live) setStream(opened)
+        else opened.close()
+      } catch {
+        // The header couldn't be read (offline, missing, damaged): the full viewer shows why.
+        if (live) onFallback()
+      }
+    })()
+    return () => {
+      live = false
+      // Drops the decrypted chunks kept for this player.
+      opened?.close()
+    }
+  }, [c, attachment, onFallback])
+
+  // Google sign-in expired while a chunk was needed: pause and offer Continue.
+  const needsSignIn = c.streamNeedsSignIn
+  useEffect(() => {
+    const el = media.current
+    if (needsSignIn && el && !el.paused) {
+      resumeAfterSignIn.current = true
+      el.pause()
+    }
+  }, [needsSignIn])
+
+  const continueAfterSignIn = async () => {
+    await c.signIn()
+    if (resumeAfterSignIn.current) {
+      resumeAfterSignIn.current = false
+      void media.current?.play().catch(() => {})
+    }
+  }
+
+  const onMediaError = () => {
+    const stats = stream ? c.streams.stats(stream.token) : null
+    if (!stats || (stats.info === 0 && stats.reads === 0)) {
+      // The browser didn't route the player through the service worker.
+      c.markStreamingUnavailable()
+      onFallback()
+    } else if (stats.lastError) {
+      setError(`This ${kind} couldn't be played: ${stats.lastError}`)
+    } else {
+      setCantPlay(true)
+    }
+  }
+
+  const save = async () => {
+    setDownload({ done: 0, total: attachment.size })
+    setError(null)
+    try {
+      saveBlob(
+        await c.attachmentBlob(attachment, (done, total) => setDownload({ done, total })),
+        attachment.name,
+      )
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setDownload(null)
+    }
+  }
+
+  let body = null
+  if (download) {
+    body = (
+      <div className="viewer-message">
+        <Spinner label="Preparing download…" />
+        <ProgressBar value={download.done} max={download.total || 1} />
+      </div>
+    )
+  } else if (cantPlay) {
+    body = (
+      <div className="viewer-message">
+        <p>This browser can't play this {kind} format.</p>
+        <button className="primary" onClick={() => void save()}>
+          Download
+        </button>
+      </div>
+    )
+  } else if (!stream) {
+    body = (
+      <div className="viewer-message">
+        <Spinner label="Opening…" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="viewer" role="dialog" aria-modal="true" aria-label={attachment.name}>
+      <header className="viewer-bar">
+        <button className="ghost small" onClick={onClose} aria-label="Close">
+          ✕ Close
+        </button>
+        <span className="viewer-title" title={attachment.name}>
+          {attachment.name}
+        </span>
+        <button className="ghost small" onClick={() => void save()} disabled={!!download}>
+          Download
+        </button>
+      </header>
+      <div className="viewer-body" data-streaming={stream ? 'yes' : 'no'}>
+        {needsSignIn && <SignInBar onContinue={() => void continueAfterSignIn()} />}
+        <ErrorNote message={error} onClose={() => setError(null)} />
+        {body}
+        {stream && !cantPlay && !download && kind === 'video' && (
+          <video
+            ref={media}
+            className="viewer-media"
+            src={stream.url}
+            controls
+            playsInline
+            autoPlay
+            preload="metadata"
+            onError={onMediaError}
+          />
+        )}
+        {stream && !cantPlay && !download && kind === 'audio' && (
+          <audio
+            ref={media}
+            className="viewer-audio"
+            src={stream.url}
+            controls
+            autoPlay
+            preload="metadata"
+            onError={onMediaError}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function AttachmentViewer({
+  attachment,
+  onClose,
+}: {
+  attachment: Attachment
+  onClose: () => void
+}) {
+  const kind = mediaKind(attachment.mime, attachment.name)
+  const [full, setFull] = useState(kind !== 'audio' && kind !== 'video')
+  const fallback = useCallback(() => setFull(true), [])
+  if (full || (kind !== 'audio' && kind !== 'video')) {
+    return <FullViewer attachment={attachment} onClose={onClose} />
+  }
+  return (
+    <StreamViewer attachment={attachment} kind={kind} onClose={onClose} onFallback={fallback} />
   )
 }

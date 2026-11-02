@@ -163,3 +163,24 @@ Decisions for A:
 - PDF: a print view (oldest entry first) and the browser's Print → Save as PDF. Photos are
   scaled to at most 1600 px for print to keep memory low on phones; photos the browser can't
   decode (HEIC on Chrome) print their thumbnail; audio, video and other files are listed.
+
+Decisions for B:
+
+- Our own service worker (`src/sw.ts`, vite-plugin-pwa `injectManifest`) replaces the generated
+  one with the same precache, offline navigation and update prompt, plus a fetch handler for
+  `<scope>stream/<token>/<name>` (scope-relative, so it works under `/vaultDiary/` on Pages).
+- The worker answers with 206 (or 200 without a Range header) and a body it pulls from the page
+  1 MiB at a time, only as the player reads; it has no keys. It finds the page by the token it
+  registered, then the request's client id, then by asking every open window.
+- The page reads the header once (one 4 KiB Range request), unwraps the file key, then fetches
+  whole chunks by index; 4 chunks are cached and the next one prefetched.
+- Local encrypted copy first (an attachment still in the upload queue), else Drive Range
+  requests. Drive answering 200 (ignoring Range) is treated as an error, never a full download.
+- Expired Google sign-in: the read waits, the player pauses and shows Continue; after signing in
+  the same request carries on.
+- Fallback to the full-decrypt viewer (with its 200 MB warning) when: no service worker controls
+  the page, it doesn't answer a ping, the header can't be read, or the player's requests never
+  reach the worker (then streaming is off until the app reloads).
+- Diagnostics page `#/stream-test` (Settings → "Test video streaming on this device"), kept
+  after the prototype step: locked it plays a file from the device, unlocked an attachment
+  from Drive, and reports whether requests went through the service worker.

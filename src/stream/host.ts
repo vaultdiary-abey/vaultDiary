@@ -43,8 +43,16 @@ function urlName(name: string): string {
   return encodeURIComponent(cleaned.slice(-80) || 'media')
 }
 
+export interface StreamStats {
+  /** Requests from the service worker that reached this page. */
+  info: number
+  reads: number
+  errors: number
+  lastError: string | null
+}
+
 export class StreamHost {
-  private streams = new Map<string, { provider: ByteProvider; mime: string }>()
+  private streams = new Map<string, { provider: ByteProvider; mime: string; stats: StreamStats }>()
   private listening = false
   private onEvent: (e: StreamEvent) => void = () => {}
 
@@ -79,7 +87,10 @@ export class StreamHost {
     const reply: InfoReply = s
       ? { ok: true, size: s.provider.size, mime: s.mime }
       : { ok: false, status: 404, error: 'Unknown stream.' }
-    if (s) this.onEvent({ token, kind: 'info' })
+    if (s) {
+      s.stats.info++
+      this.onEvent({ token, kind: 'info' })
+    }
     port.postMessage(reply)
   }
 
@@ -95,9 +106,12 @@ export class StreamHost {
         const bytes = await s.provider.read(msg.offset, msg.length)
         const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
         reply = { ok: true, bytes: buffer as ArrayBuffer }
+        s.stats.reads++
         this.onEvent({ token: msg.token, kind: 'read', offset: msg.offset, length: bytes.length })
       } catch (e) {
         reply = { ok: false, status: errorStatus(e), error: (e as Error).message }
+        s.stats.errors++
+        s.stats.lastError = (e as Error).message
         this.onEvent({ token: msg.token, kind: 'error', message: (e as Error).message })
       }
     }
@@ -130,11 +144,21 @@ export class StreamHost {
     const registration = await this.sw?.ready
     if (!registration) throw new Error('Streaming needs the service worker.')
     const token = randomId()
-    this.streams.set(token, { provider, mime })
+    this.streams.set(token, {
+      provider,
+      mime,
+      stats: { info: 0, reads: 0, errors: 0, lastError: null },
+    })
     const register: PageToWorker = { type: 'vd-stream-register', token }
     this.sw?.controller?.postMessage(register)
     const url = `${registration.scope}${STREAM_PATH}${token}/${urlName(name)}`
     return { token, url, close: () => this.close(token) }
+  }
+
+  /** What reached this page for a stream so far (null once it is closed). */
+  stats(token: string): StreamStats | null {
+    const s = this.streams.get(token)
+    return s ? { ...s.stats } : null
   }
 
   close(token: string): void {
