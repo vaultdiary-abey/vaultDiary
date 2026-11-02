@@ -399,6 +399,9 @@ export function Settings() {
       <Backup />
       <ExportCard />
       <DangerZone />
+      <p className="muted small center">
+        <a href={href({ name: 'streamtest' })}>Test video streaming on this device</a>
+      </p>
       <p className="muted small center">Vault Diary · format VDV1 · no analytics, no trackers</p>
     </div>
   )
