@@ -7,24 +7,36 @@ import {
   MAX_VIDEO_CHOICES,
   setMaxVideoMinutes,
   getTheme,
+  getNudgeTime,
   setAutoLockMinutes,
+  setNudgeTime,
+  DEFAULT_NUDGE_TIME,
   setTheme,
   type Theme,
 } from '../../core/prefs'
 import { passphraseProblem } from '../../crypto/vault'
-import { formatBytes, saveBlob } from '../../lib/download'
-import { localDate } from '../../model/entry'
-import { Card, ErrorNote, PassphraseInput, ProgressBar, Spinner } from '../components'
+import { formatBytes } from '../../lib/download'
+import { Card, ErrorNote, PassphraseInput, Spinner } from '../components'
 import { useController } from '../controllerContext'
 import { liveTemplates, setShowPrompts } from '../../model/settings'
 import { href } from '../router'
 import { Passkeys } from './Passkeys'
+import { ExportCard } from './Export'
+import { BackupProgress, BackupReminder } from '../Reminders'
+import { useBackup, useLastBackup } from '../useBackup'
 import { UploadsList } from './UploadsList'
 
 function Preferences() {
   const [minutes, setMinutes] = useState(getAutoLockMinutes)
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const [maxVideo, setMaxVideo] = useState(getMaxVideoMinutes)
+  const [nudge, setNudge] = useState(getNudgeTime)
+  const [lastNudgeTime, setLastNudgeTime] = useState(nudge === 'off' ? DEFAULT_NUDGE_TIME : nudge)
+  const changeNudge = (value: string) => {
+    setNudge(value)
+    setNudgeTime(value)
+    if (value !== 'off') setLastNudgeTime(value)
+  }
   return (
     <Card>
       <h2>This device</h2>
@@ -61,6 +73,28 @@ function Preferences() {
           <option value="light">Light</option>
           <option value="dark">Dark</option>
         </select>
+      </div>
+      <div className="field">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={nudge !== 'off'}
+            onChange={(e) => changeNudge(e.target.checked ? lastNudgeTime : 'off')}
+          />{' '}
+          Remind me to write when I open the app
+        </label>
+        {nudge !== 'off' && (
+          <>
+            <label htmlFor="nudgetime">If there's no entry yet after</label>
+            <input
+              id="nudgetime"
+              type="time"
+              value={nudge}
+              onChange={(e) => e.target.value && changeNudge(e.target.value)}
+            />
+          </>
+        )}
+        <p className="hint">A gentle banner on the Today view. No notifications are sent.</p>
       </div>
       <div className="field">
         <label htmlFor="maxvideo">Longest video to record</label>
@@ -225,33 +259,23 @@ function Storage() {
 
 function Backup() {
   const c = useController()
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const run = async () => {
-    setError(null)
-    setProgress({ done: 0, total: 1 })
-    try {
-      const zip = await c.backup((done, total) => setProgress({ done, total }))
-      saveBlob(zip, `VaultDiary-backup-${localDate()}.zip`)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setProgress(null)
-    }
-  }
+  const { progress, error, setError, run } = useBackup()
+  const last = useLastBackup()
   return (
     <Card>
-      <h2>Backup and recovery</h2>
+      <h2 id="backup">Backup and recovery</h2>
       <p className="muted small">
         The backup is a zip of your whole vault exactly as stored in Drive — still encrypted,
         including vault.json. Open it later with the recovery tool, your passphrase or recovery
         words.
       </p>
+      <p className="small" data-testid="last-backup">
+        {last
+          ? `Last encrypted backup: ${new Date(last).toLocaleDateString(undefined, { dateStyle: 'medium' })}`
+          : 'No encrypted backup made yet.'}
+      </p>
       {progress ? (
-        <div>
-          <Spinner label={`Downloading ${progress.done} of ${progress.total} files…`} />
-          <ProgressBar value={progress.done} max={progress.total} />
-        </div>
+        <BackupProgress progress={progress} />
       ) : (
         <button className="primary" onClick={() => void run()} disabled={!c.online}>
           Download encrypted backup (.zip)
@@ -365,6 +389,7 @@ export function Settings() {
     <div className="page settings">
       <h1>Settings</h1>
       {c.readOnly && <p className="note">This is a read-only build: editing is turned off.</p>}
+      <BackupReminder />
       <Preferences />
       <Writing />
       <SyncDetails />
@@ -372,6 +397,7 @@ export function Settings() {
       {!c.readOnly && <ChangePassphrase />}
       <Storage />
       <Backup />
+      <ExportCard />
       <DangerZone />
       <p className="muted small center">Vault Diary · format VDV1 · no analytics, no trackers</p>
     </div>

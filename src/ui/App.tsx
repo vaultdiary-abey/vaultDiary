@@ -12,9 +12,12 @@ import { Timeline } from './screens/Timeline'
 import { ResetPassphrase, Unlock } from './screens/Unlock'
 import { Finding, Unconfigured, Welcome } from './screens/Welcome'
 import { Spinner, UpdateBanner } from './components'
+import { PrintView } from './PrintView'
 
 function Unlocked() {
+  const c = useController()
   const route = useRoute()
+  if (c.printRange) return <PrintView range={c.printRange} />
   let page
   switch (route.name) {
     case 'day':
