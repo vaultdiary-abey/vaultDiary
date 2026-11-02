@@ -28,9 +28,12 @@ export const IV_LENGTH = 12
 export const TAG_LENGTH = 16
 export const CHUNK_OVERHEAD = IV_LENGTH + TAG_LENGTH
 
-/** "settings" (settings.vds) is FORMAT.md revision 2: encrypted app settings such as templates. */
-export type FileKind = 'entry' | 'file' | 'index' | 'settings'
-const KINDS: readonly FileKind[] = ['entry', 'file', 'index', 'settings']
+/**
+ * "settings" (settings.vds) is FORMAT.md revision 2: encrypted app settings such as templates.
+ * "cache" is local-only (e.g. the search index cache in IndexedDB) and never written to Drive.
+ */
+export type FileKind = 'entry' | 'file' | 'index' | 'settings' | 'cache'
+const KINDS: readonly FileKind[] = ['entry', 'file', 'index', 'settings', 'cache']
 
 export interface WrappedKey {
   iv: string
