@@ -7,6 +7,12 @@ import {
   MAX_VIDEO_CHOICES,
   setMaxVideoMinutes,
   getTheme,
+  getAccent,
+  getDots,
+  setAccent,
+  setDots,
+  ACCENTS,
+  type Accent,
   getNudgeTime,
   setAutoLockMinutes,
   setNudgeTime,
@@ -31,6 +37,8 @@ function Preferences() {
   const [minutes, setMinutes] = useState(getAutoLockMinutes)
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const [maxVideo, setMaxVideo] = useState(getMaxVideoMinutes)
+  const [accent, setAccentState] = useState<Accent>(getAccent)
+  const [dots, setDotsState] = useState(getDots)
   const [nudge, setNudge] = useState(getNudgeTime)
   const [lastNudgeTime, setLastNudgeTime] = useState(nudge === 'off' ? DEFAULT_NUDGE_TIME : nudge)
   const changeNudge = (value: string) => {
@@ -74,6 +82,40 @@ function Preferences() {
           <option value="light">Light</option>
           <option value="dark">Dark</option>
         </select>
+      </div>
+      <fieldset className="field accent-picker">
+        <legend>Colour</legend>
+        <div className="swatches">
+          {ACCENTS.map((a) => (
+            <label key={a.id} className="swatch" data-accent-swatch={a.id}>
+              <input
+                type="radio"
+                name="accent"
+                value={a.id}
+                checked={accent === a.id}
+                onChange={() => {
+                  setAccentState(a.id)
+                  setAccent(a.id)
+                }}
+              />
+              <span className="swatch-dot" aria-hidden="true" />
+              <span className="swatch-label">{a.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="field">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={dots}
+            onChange={(e) => {
+              setDotsState(e.target.checked)
+              setDots(e.target.checked)
+            }}
+          />{' '}
+          Dotted background
+        </label>
       </div>
       <div className="field">
         <label className="check">

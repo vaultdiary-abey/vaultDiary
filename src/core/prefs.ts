@@ -40,8 +40,43 @@ export function setTheme(theme: Theme): void {
 }
 
 export function applyTheme(theme: Theme = getTheme()): void {
-  if (theme === 'system') delete document.documentElement.dataset.theme
-  else document.documentElement.dataset.theme = theme
+  const root = document.documentElement
+  if (theme === 'system') delete root.dataset.theme
+  else root.dataset.theme = theme
+  const accent = getAccent()
+  if (accent === 'ink') delete root.dataset.accent
+  else root.dataset.accent = accent
+  if (getDots()) delete root.dataset.dots
+  else root.dataset.dots = 'off'
+}
+
+/** Accent colour of the minimal theme. */
+export const ACCENTS = [
+  { id: 'ink', label: 'Ink' },
+  { id: 'sage', label: 'Sage' },
+  { id: 'clay', label: 'Clay' },
+  { id: 'graphite', label: 'Graphite' },
+] as const
+export type Accent = (typeof ACCENTS)[number]['id']
+
+export function getAccent(): Accent {
+  const a = read('vd.accent')
+  return ACCENTS.some((x) => x.id === a) ? (a as Accent) : 'ink'
+}
+
+export function setAccent(accent: Accent): void {
+  write('vd.accent', accent)
+  applyTheme()
+}
+
+/** The dotted "paper" background (on unless turned off). */
+export function getDots(): boolean {
+  return read('vd.dots') !== 'off'
+}
+
+export function setDots(on: boolean): void {
+  write('vd.dots', on ? 'on' : 'off')
+  applyTheme()
 }
 
 /** Longest video the app records, so clips don't fill Google Drive. Voice notes: AUDIO_MAX_MINUTES. */
