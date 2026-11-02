@@ -7,6 +7,7 @@ import { EntryPage, NewEntry } from './screens/EntryPage'
 import { Settings } from './screens/Settings'
 import { Setup } from './screens/Setup'
 import { Insights } from './screens/Insights'
+import { Templates } from './screens/Templates'
 import { Timeline } from './screens/Timeline'
 import { ResetPassphrase, Unlock } from './screens/Unlock'
 import { Finding, Unconfigured, Welcome } from './screens/Welcome'
@@ -23,10 +24,13 @@ function Unlocked() {
       page = <EntryPage key={route.id} id={route.id} edit={route.edit} />
       break
     case 'new':
-      page = <NewEntry date={route.date} />
+      page = <NewEntry date={route.date} template={route.template} prompt={route.prompt} />
       break
     case 'timeline':
       page = <Timeline key={route.tag ?? ''} tag={route.tag} />
+      break
+    case 'templates':
+      page = <Templates edit={route.edit} />
       break
     case 'insights':
       page = <Insights year={route.year} />

@@ -3,7 +3,8 @@ import { useSyncExternalStore } from 'react'
 export type Route =
   | { name: 'day'; date: string | null }
   | { name: 'entry'; id: string; edit: boolean }
-  | { name: 'new'; date: string | null }
+  | { name: 'new'; date: string | null; template?: string | null; prompt?: number | null }
+  | { name: 'templates'; edit: string | null }
   | { name: 'timeline'; tag: string | null }
   | { name: 'insights'; year: number | null }
   | { name: 'calendar'; month: string | null }
@@ -20,8 +21,17 @@ export function parseRoute(hash: string): Route {
       return a && /^[0-9a-f]{32}$/.test(a)
         ? { name: 'entry', id: a, edit: b === 'edit' }
         : { name: 'day', date: null }
-    case 'new':
-      return { name: 'new', date: date(a) }
+    case 'new': {
+      const [, , kind, value] = parts
+      return {
+        name: 'new',
+        date: date(a),
+        template: kind === 't' && value && /^[0-9a-f]{32}$/.test(value) ? value : null,
+        prompt: kind === 'p' && value && /^-?\d{1,4}$/.test(value) ? Number(value) : null,
+      }
+    }
+    case 'templates':
+      return { name: 'templates', edit: a === 'new' || (a && /^[0-9a-f]{32}$/.test(a)) ? a : null }
     case 'timeline': {
       let tag: string | null = null
       if (a === 'tag' && b) {
@@ -50,8 +60,14 @@ export function href(route: Route): string {
       return route.date ? `#/day/${route.date}` : '#/'
     case 'entry':
       return `#/entry/${route.id}${route.edit ? '/edit' : ''}`
-    case 'new':
-      return route.date ? `#/new/${route.date}` : '#/new'
+    case 'new': {
+      const base = `#/new/${route.date ?? 'today'}`
+      if (route.template) return `${base}/t/${route.template}`
+      if (route.prompt !== null && route.prompt !== undefined) return `${base}/p/${route.prompt}`
+      return route.date ? base : '#/new'
+    }
+    case 'templates':
+      return route.edit ? `#/templates/${route.edit}` : '#/templates'
     case 'timeline':
       return route.tag ? `#/timeline/tag/${encodeURIComponent(route.tag)}` : '#/timeline'
     case 'insights':

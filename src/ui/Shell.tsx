@@ -123,7 +123,7 @@ const TABS: { route: Route; label: string; icon: string; match: Route['name'][] 
   { route: { name: 'timeline', tag: null }, label: 'Timeline', icon: '☰', match: ['timeline'] },
   { route: { name: 'calendar', month: null }, label: 'Calendar', icon: '▦', match: ['calendar'] },
   { route: { name: 'insights', year: null }, label: 'Insights', icon: '✦', match: ['insights'] },
-  { route: { name: 'settings' }, label: 'Settings', icon: '⚙', match: ['settings'] },
+  { route: { name: 'settings' }, label: 'Settings', icon: '⚙', match: ['settings', 'templates'] },
 ]
 
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
