@@ -41,6 +41,11 @@ import {
   type VaultLocation,
 } from '../drive/vaultFolder'
 import { ZipWriter } from '../lib/zip'
+import { blobSource, openContainer } from '../crypto/container'
+import { blobType } from '../media/kind'
+import { StreamHost, type OpenStream } from '../stream/host'
+import { PlainReader } from '../stream/plainReader'
+import { driveSource } from '../stream/sources'
 import { setLastBackup } from '../model/settings'
 import {
   buildMarkdownExport,
@@ -149,13 +154,21 @@ export class Controller extends Emitter {
   private exportGrantUntil = 0
   /** This device had completed a sync before this visit (so its settings.vds copy is real). */
   private syncedBefore = false
+  /** Streaming playback: answers the service worker with decrypted bytes (Phase 3 B). */
+  readonly streams = new StreamHost()
+  /** A stream is waiting for Google sign-in (the player pauses and offers Continue). */
+  streamNeedsSignIn = false
+  private signInWaiters: { resolve: () => void; reject: (e: Error) => void }[] = []
   /** The date range shown in the print view (PDF export), or null. */
   printRange: DateRange | null = null
   private unsubscribers: (() => void)[] = []
 
   constructor() {
     super()
-    const changed = () => this.emit()
+    const changed = () => {
+      this.emit()
+      this.resolveSignInWaiters()
+    }
     if ((import.meta.env.DEV || import.meta.env.MODE === 'e2e') && FAKE_DRIVE) {
       this.auth = new FakeAuth(changed)
       this.drive = null as unknown as DriveClient // replaced in init() by the dev fake
@@ -242,6 +255,17 @@ export class Controller extends Emitter {
   private onAuthChange() {
     this.emit()
     if (this.auth.hasToken()) this.kickAll()
+    this.resolveSignInWaiters()
+  }
+
+  /** Streams waiting for Google sign-in continue once there is a token again. */
+  private resolveSignInWaiters() {
+    if (!this.auth.hasToken() || !this.signInWaiters.length) return
+    const waiters = this.signInWaiters
+    this.signInWaiters = []
+    this.streamNeedsSignIn = false
+    for (const w of waiters) w.resolve()
+    this.emit()
   }
 
   private kickAll() {
@@ -721,6 +745,8 @@ export class Controller extends Emitter {
     this.dropThumbnails()
     this.exportGrantUntil = 0
     this.printRange = null
+    this.streams.closeAll()
+    this.failSignInWaiters(new Error('The vault is locked.'))
     await this.dropSearch()
     if (this.syncTimer) clearInterval(this.syncTimer)
     if (this.changeTimer) clearTimeout(this.changeTimer)
@@ -785,6 +811,70 @@ export class Controller extends Emitter {
       attachment,
       await this.encryptedFile(attachment.fileId, onProgress),
     )
+  }
+
+  // ---------------------------------------------------------------- streaming playback
+
+  /** Can this page stream right now (a service worker controls it and answers)? */
+  streamingAvailable(): Promise<boolean> {
+    return this.streams.available()
+  }
+
+  private waitForSignIn(): Promise<void> {
+    if (this.auth.hasToken()) return Promise.resolve()
+    return new Promise<void>((resolve, reject) => {
+      this.signInWaiters.push({ resolve, reject })
+      if (!this.streamNeedsSignIn) {
+        this.streamNeedsSignIn = true
+        this.emit()
+      }
+    })
+  }
+
+  private failSignInWaiters(e: Error) {
+    const waiters = this.signInWaiters
+    this.signInWaiters = []
+    this.streamNeedsSignIn = false
+    for (const w of waiters) w.reject(e)
+  }
+
+  /**
+   * Opens an attachment for streaming playback and returns a same-origin URL for <video> or
+   * <audio>. Reads the local encrypted copy if this device still has one, otherwise Google
+   * Drive with Range requests; only the chunks the player asks for are downloaded and
+   * decrypted. Throws if the header can't be read (the viewer then falls back).
+   */
+  async openStream(attachment: Attachment): Promise<OpenStream & { reader: PlainReader }> {
+    const session = this.session
+    if (!session) throw new Error('The vault is locked.')
+    const queued = await this.db.uploads.get(attachment.fileId)
+    let source
+    if (queued) source = blobSource(queued.blob)
+    else {
+      if (!this.location) throw new Error('Connect to Google Drive to play this attachment.')
+      if (!this.auth.hasToken()) await this.waitForSignIn()
+      const [file] = await this.drive.findByName(this.location.filesId, `${attachment.fileId}.vdf`)
+      if (!file) throw new Error('This attachment has not reached Google Drive yet.')
+      source = driveSource(() => this.drive, file.id, file.size, {
+        waitForSignIn: () => {
+          // Drive said the token is no longer valid, even if it hadn't timed out yet.
+          this.auth.markExpired()
+          return this.waitForSignIn()
+        },
+      })
+    }
+    const opened = await openContainer(session.key, source, {
+      expectedId: attachment.fileId,
+      expectedKind: 'file',
+    })
+    if (this.session !== session) throw new Error('The vault is locked.')
+    const reader = new PlainReader(opened)
+    const stream = await this.streams.open(
+      reader,
+      blobType(attachment.mime, attachment.name),
+      attachment.name,
+    )
+    return { ...stream, reader }
   }
 
   // ---------------------------------------------------------------- thumbnails

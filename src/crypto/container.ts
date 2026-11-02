@@ -300,12 +300,30 @@ async function unwrapFileKey(mk: CryptoKey, header: ContainerHeader): Promise<Cr
   }
 }
 
-/** Yields plaintext chunk by chunk. Throws FormatError / IntegrityError on any problem. */
-export async function* decryptContainer(
+export interface OpenedContainer {
+  header: ContainerHeader
+  /** Byte offset of chunk 0. */
+  dataOffset: number
+  /** Plaintext length of chunk `index`. */
+  chunkLength(index: number): number
+  /** Byte offset of chunk `index` in the container: dataOffset + index × (chunkSize + 28). */
+  chunkOffset(index: number): number
+  /**
+   * Reads and decrypts one chunk (random access). Checks the tag with the chunk's AAD,
+   * including its index and the last-chunk flag. Throws IntegrityError on any failure.
+   */
+  readChunk(index: number): Promise<Uint8Array<ArrayBuffer>>
+}
+
+/**
+ * Reads and checks a container's header and unwraps its file key, for random access to its
+ * chunks (streaming playback). Only the header is read here.
+ */
+export async function openContainer(
   mk: CryptoKey,
   source: ByteSource,
   options: DecryptOptions = {},
-): AsyncGenerator<Uint8Array<ArrayBuffer>, ContainerHeader> {
+): Promise<OpenedContainer> {
   const { header, dataOffset } = await readHeader(source)
   if (options.expectedId && header.id !== options.expectedId) {
     throw new IntegrityError('File id in header does not match the file name.')
@@ -314,21 +332,49 @@ export async function* decryptContainer(
     throw new IntegrityError(`Expected a ${options.expectedKind} file, found ${header.kind}.`)
   }
   const fileKey = await unwrapFileKey(mk, header)
-  let offset = dataOffset
+  const chunkLength = (index: number) =>
+    index === header.chunkCount - 1 ? header.size - index * header.chunkSize : header.chunkSize
+  const chunkOffset = (index: number) => dataOffset + index * (header.chunkSize + CHUNK_OVERHEAD)
+  return {
+    header,
+    dataOffset,
+    chunkLength,
+    chunkOffset,
+    async readChunk(index) {
+      if (!Number.isInteger(index) || index < 0 || index >= header.chunkCount) {
+        throw new RangeError(`No chunk ${index} in this file.`)
+      }
+      const length = chunkLength(index) + CHUNK_OVERHEAD
+      const chunk = await source.read(chunkOffset(index), length)
+      if (chunk.length !== length) throw new IntegrityError(`Chunk ${index} is truncated.`)
+      const last = index === header.chunkCount - 1
+      const plain = await gcmDecrypt(
+        fileKey,
+        own(chunk.subarray(0, IV_LENGTH)),
+        own(chunk.subarray(IV_LENGTH)),
+        chunkAad(header.id, index, last),
+      )
+      if (!plain) {
+        throw new IntegrityError(
+          `Chunk ${index} failed authentication: the file was modified, reordered or truncated.`,
+        )
+      }
+      return plain
+    },
+  }
+}
+
+/** Yields plaintext chunk by chunk. Throws FormatError / IntegrityError on any problem. */
+export async function* decryptContainer(
+  mk: CryptoKey,
+  source: ByteSource,
+  options: DecryptOptions = {},
+): AsyncGenerator<Uint8Array<ArrayBuffer>, ContainerHeader> {
+  const opened = await openContainer(mk, source, options)
+  const { header } = opened
   let done = 0
   for (let index = 0; index < header.chunkCount; index++) {
-    const last = index === header.chunkCount - 1
-    const plainLength = last ? header.size - index * header.chunkSize : header.chunkSize
-    const chunk = await source.read(offset, plainLength + CHUNK_OVERHEAD)
-    offset += plainLength + CHUNK_OVERHEAD
-    const iv = own(chunk.subarray(0, IV_LENGTH))
-    const ct = own(chunk.subarray(IV_LENGTH))
-    const plain = await gcmDecrypt(fileKey, iv, ct, chunkAad(header.id, index, last))
-    if (!plain) {
-      throw new IntegrityError(
-        `Chunk ${index} failed authentication: the file was modified, reordered or truncated.`,
-      )
-    }
+    const plain = await opened.readChunk(index)
     done += plain.length
     options.onProgress?.(done, header.size)
     yield plain

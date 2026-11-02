@@ -9,6 +9,8 @@ export type Route =
   | { name: 'insights'; year: number | null }
   | { name: 'calendar'; month: string | null }
   | { name: 'settings' }
+  /** Diagnostics: does streaming playback work in this browser? Works locked or unlocked. */
+  | { name: 'streamtest' }
 
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
@@ -49,6 +51,8 @@ export function parseRoute(hash: string): Route {
       return { name: 'calendar', month: a && /^\d{4}-\d{2}$/.test(a) ? a : null }
     case 'settings':
       return { name: 'settings' }
+    case 'stream-test':
+      return { name: 'streamtest' }
     default:
       return { name: 'day', date: null }
   }
@@ -76,6 +80,8 @@ export function href(route: Route): string {
       return route.month ? `#/calendar/${route.month}` : '#/calendar'
     case 'settings':
       return '#/settings'
+    case 'streamtest':
+      return '#/stream-test'
   }
 }
 

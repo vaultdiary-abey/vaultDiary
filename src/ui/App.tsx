@@ -13,6 +13,7 @@ import { ResetPassphrase, Unlock } from './screens/Unlock'
 import { Finding, Unconfigured, Welcome } from './screens/Welcome'
 import { Spinner, UpdateBanner } from './components'
 import { PrintView } from './PrintView'
+import { StreamTest } from './screens/StreamTest'
 
 function Unlocked() {
   const c = useController()
@@ -44,12 +45,24 @@ function Unlocked() {
     case 'settings':
       page = <Settings />
       break
+    case 'streamtest':
+      page = null
+      break
   }
   return <Shell route={route}>{page}</Shell>
 }
 
 export function App() {
   const c = useController()
+  const route = useRoute()
+  // Diagnostics page: works whether the diary is locked or not.
+  if (route.name === 'streamtest' && c.phase !== 'boot') {
+    return (
+      <main className="content">
+        <StreamTest />
+      </main>
+    )
+  }
   if (c.phase === 'unlocked') return <Unlocked />
   return (
     <>

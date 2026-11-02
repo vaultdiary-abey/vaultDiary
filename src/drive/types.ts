@@ -34,6 +34,8 @@ export interface DriveClient {
   createFile(parentId: string, name: string, data: Blob): Promise<DriveFile>
   updateFile(fileId: string, data: Blob): Promise<DriveFile>
   download(fileId: string, onProgress?: (done: number, total: number) => void): Promise<Blob>
+  /** Bytes start…end (inclusive) of a file, with an HTTP Range request (streaming playback). */
+  downloadRange(fileId: string, start: number, end: number): Promise<Uint8Array<ArrayBuffer>>
   /** Moves to Drive's trash (recoverable there for 30 days). */
   trash(fileId: string): Promise<void>
   startResumable(parentId: string, name: string, size: number): Promise<string>

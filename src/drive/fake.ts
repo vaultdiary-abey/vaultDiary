@@ -52,6 +52,10 @@ export class FakeDrive implements DriveClient {
   hangNext = false
   slicesPut = 0
   requests = 0
+  /** Whole-file downloads made, by file id. */
+  downloads: string[] = []
+  /** Range downloads made (streaming playback), as [fileId, start, end]. */
+  ranges: [string, number, number][] = []
 
   private check() {
     this.requests++
@@ -168,8 +172,19 @@ export class FakeDrive implements DriveClient {
   async download(fileId: string, onProgress?: (done: number, total: number) => void) {
     this.check()
     const f = this.get(fileId)
+    this.downloads.push(fileId)
     onProgress?.(f.data.length, f.data.length)
     return new Blob([new Uint8Array(f.data)])
+  }
+
+  async downloadRange(fileId: string, start: number, end: number) {
+    this.check()
+    const f = this.get(fileId)
+    if (start < 0 || end < start || start >= f.data.length) {
+      throw new DriveError(416, 'Range not satisfiable')
+    }
+    this.ranges.push([fileId, start, end])
+    return new Uint8Array(f.data.slice(start, end + 1))
   }
 
   async trash(fileId: string) {
