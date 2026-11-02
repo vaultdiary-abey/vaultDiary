@@ -85,15 +85,15 @@ export default defineConfig({
           { src: 'maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
+      // Our own service worker (src/sw.ts): Workbox precaching plus streaming playback.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,webmanifest}'],
         // recovery.html is a download, not part of the app shell.
         // pdf.js cmaps/fonts/wasm are fetched only for PDFs that need them.
-        globIgnores: ['recovery.html', 'pdfjs/**'],
-        navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/recovery\.html$/],
-        // Never cache Google requests in the service worker.
-        runtimeCaching: [],
+        globIgnores: ['recovery.html', 'pdfjs/**', 'sw.js'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },
     }),
