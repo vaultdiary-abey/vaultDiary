@@ -93,6 +93,17 @@ copy is kept in IndexedDB, encrypted with the master key in the vault's own cont
 (`kind: "cache"`). It never leaves the device and is deleted with "Remove vault from this
 device". Search terms are never sent anywhere.
 
+## HEIC photos and videos that can't play
+
+- When a HEIC photo is added on a browser that can decode it, the app also makes a JPEG viewing
+  copy on the device (canvas re-encode, quality 0.9, at most 4096 px) and encrypts it like any
+  file. The original is never changed or removed. Whether a browser can decode HEIC is checked
+  with a tiny HEIC image built into the app; nothing is fetched.
+- "Make viewing copies for older photos" decrypts originals on the device one at a time and
+  pauses while the upload queue catches up; it keeps no plaintext.
+- Videos are never transcoded. To say "this browser can't play this video" in plain words, the
+  app reads the codec name from the decrypted MP4/MOV header on the device.
+
 ## Reminders and export
 
 - "On this day", the writing nudge and the backup reminder are worked out on the device from

@@ -285,6 +285,13 @@ All payloads are UTF-8 JSON. All metadata lives inside the ciphertext.
   container holding a small JPEG preview of a photo or video (longest side at most 320 px). It is
   an ordinary `kind: "file"` container. Recovery tools don't export thumbnails: the original is
   there. A missing or unreadable thumbnail is not an error; the app makes a new one.
+- `attachments[].viewCopyFileId` (revision 3, optional) is the id of another `files/<id>.vdf`
+  container holding a JPEG **viewing copy** of a HEIC/HEIF photo (quality 0.9, longest side at
+  most 4096 px), for browsers that can't show HEIC. It is an ordinary `kind: "file"` container.
+  The original is always kept. Recovery tools export it next to the original as
+  `files/<first 8 hex of the original's fileId>-<original name without its extension>-view.jpg`
+  and the entry's Markdown links it under the attachment. A missing viewing copy is not an
+  error.
 - Readers must keep fields they don't know, in the entry and in each attachment. A writer that
   re-saves an entry it read must write unknown fields back unchanged.
 
@@ -294,11 +301,13 @@ title. It is created when the same entry was edited on two devices before they s
 ### 5.2 Attachment (`kind: "file"`)
 
 The raw bytes of the original file. Name and type are stored in the entry that references it.
-Thumbnails (§5.1, `thumbFileId`) are stored the same way and contain a JPEG.
+Thumbnails (§5.1, `thumbFileId`) and viewing copies (`viewCopyFileId`, revision 3) are stored
+the same way and contain a JPEG.
 
-When two versions of an entry differ only in their attachments' `thumbFileId` (two devices made
-thumbnails for the same attachment), writers merge them instead of making a conflict copy:
-Drive's thumbnails are kept, and the other version's fill attachments that have none.
+When two versions of an entry differ only in their attachments' `thumbFileId` or
+`viewCopyFileId` (two devices made them for the same attachment), writers merge them instead of
+making a conflict copy: Drive's are kept, and the other version's fill attachments that have
+none.
 
 ### 5.3 Index (`kind: "index"`)
 
@@ -407,3 +416,8 @@ recovery words.
   - Tags are now used (§5.1). Local-only container kind `"cache"` (§5.4), never on Drive.
 - **Revision 3** (Phase 3):
   - Optional `lastBackup` in `settings.vds` (§5.5). Recovery tools skip `settings.vds` as before.
+  - Optional attachment field `viewCopyFileId` (§5.1, §5.2): a JPEG viewing copy of a HEIC photo
+    in its own `.vdf`. Updated recovery tools export it as `…-view.jpg` next to the original;
+    older ones export it as `…-unreferenced.bin` (nothing is lost either way).
+  - No change to the container: audio and video are streamed by reading single chunks
+    (§4.3, random access).

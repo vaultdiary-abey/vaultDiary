@@ -564,6 +564,16 @@ def attachment_path(file_id, name):
     return f"files/{file_id[:8]}-{safe_file_name(name)}"
 
 
+def view_copy_path(file_id, name):
+    """A HEIC photo's JPEG viewing copy (FORMAT.md revision 3), next to the original."""
+    return f"files/{file_id[:8]}-{safe_file_name(re.sub(r'[.][^.]*$', '', name))}-view.jpg"
+
+
+def _view_copy_id(a):
+    v = a.get("viewCopyFileId")
+    return v if isinstance(v, str) and ID_RE.match(v) else None
+
+
 def orphan_path(file_id):
     return f"files/{file_id[:8]}-unreferenced.bin"
 
@@ -596,6 +606,9 @@ def entry_to_markdown(e, available):
             note = f"{_num(a['size'])} bytes" if available(a["fileId"]) else "missing from this copy"
             label = re.sub(r"[\[\]]", "", a["name"])
             lines.append(f"- [{label}](<../../{attachment_path(a['fileId'], a['name'])}>) ({note})")
+            view = _view_copy_id(a)
+            if view and available(view):
+                lines.append(f"  - [Viewing copy (JPEG)](<../../{view_copy_path(a['fileId'], a['name'])}>)")
         lines.append("")
     return "\n".join(lines)
 
@@ -656,6 +669,14 @@ def recover(sources, out_dir, secret, use_words=False, log=print):
         for a in e["attachments"]:
             named.setdefault(a["fileId"], attachment_path(a["fileId"], a["name"]))
 
+    # Viewing copies of HEIC photos (viewCopyFileId) are exported next to their original.
+    view_copies = {}
+    for e in reversed(ordered):
+        for a in e["attachments"]:
+            view = _view_copy_id(a)
+            if view:
+                view_copies.setdefault(view, view_copy_path(a["fileId"], a["name"]))
+
     # Thumbnails (an attachment's thumbFileId) are previews the app can remake; not exported.
     thumbs = {
         a["thumbFileId"]
@@ -666,9 +687,10 @@ def recover(sources, out_dir, secret, use_words=False, log=print):
 
     written_files = set()
     for file_id, candidates in files.items():
-        if file_id not in named and file_id in thumbs:
+        if file_id not in named and file_id not in view_copies and file_id in thumbs:
             continue
-        dest = os.path.join(out_dir, named.get(file_id, orphan_path(file_id)))
+        path = named.get(file_id) or view_copies.get(file_id) or orphan_path(file_id)
+        dest = os.path.join(out_dir, path)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         errors = []
         for item in candidates:

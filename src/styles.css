@@ -1840,3 +1840,17 @@ label.check {
   border-radius: var(--radius);
   margin-bottom: 0.75rem;
 }
+
+.viewer-caption {
+  text-align: center;
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin: 0.5rem 1rem;
+}
+
+.viewer-thumb {
+  max-width: 200px;
+  border-radius: 8px;
+  margin: 0 auto 0.75rem;
+  display: block;
+}

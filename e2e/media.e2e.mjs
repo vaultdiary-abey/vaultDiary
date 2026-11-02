@@ -219,7 +219,10 @@ await page.screenshot({ path: `${SHOTS}/m3-video.png` })
 await closeViewer(page)
 
 await openViewer(page, 'IMG_0001.HEIC')
-await page.getByText("This browser can't show this photo").waitFor()
+// Phase 3: HEIC photos without a viewing copy get a plain message and Download.
+await page
+  .getByText("This browser can't show HEIC photos, and this one has no viewing copy yet")
+  .waitFor()
 assert(true, 'undecodable HEIC offers Download')
 await closeViewer(page)
 

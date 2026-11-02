@@ -16,6 +16,8 @@ What you get back:
 VaultDiary-recovered/
   entries/2026-10-26/morning-walk-9b1d3c0a.md     one Markdown file per entry, by day
   files/51c0aa12-IMG_0042.jpg                     attachments, with their original names
+  files/7d2e90b1-IMG_0100.HEIC                    an iPhone photo (original)
+  files/7d2e90b1-IMG_0100-view.jpg                its JPEG viewing copy, if the app made one
 ```
 
 Each `.md` file starts with the entry's details (date, times, mood) and links to its attachments.

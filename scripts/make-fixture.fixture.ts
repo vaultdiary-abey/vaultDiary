@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { it } from 'vitest'
 import { randomBytes, randomId, toBase64, utf8, wipe } from '../src/crypto/bytes'
@@ -7,7 +7,13 @@ import { makePasskeyWrapper } from '../src/crypto/passkey'
 import { createVault, unwrapWithPassphrase } from '../src/crypto/vault'
 import { buildIndex, type Entry } from '../src/model/entry'
 import { defaultSettings, saveTemplate, setLastBackup } from '../src/model/settings'
-import { attachmentPath, entryPath, entryToMarkdown, orphanPath } from '../src/recovery/export'
+import {
+  attachmentPath,
+  entryPath,
+  entryToMarkdown,
+  orphanPath,
+  viewCopyPath,
+} from '../src/recovery/export'
 
 const ROOT = 'tests/fixtures/sample-vault'
 const PASSPHRASE = 'fixture passphrase do not use'
@@ -80,11 +86,24 @@ it('writes the sample vault fixture', async () => {
       mime: 'video/webm;codecs=vp9,opus',
       data: pseudoRandom(50_000, 13),
     },
+    // Phase 3: a HEIC photo (index 6); its JPEG viewing copy is below.
+    {
+      fileId: randomId(),
+      name: 'IMG_0100.HEIC',
+      mime: 'image/heic',
+      data: new Uint8Array(readFileSync('tests/fixtures/assets/IMG_0100.HEIC')),
+    },
   ]
+  // Phase 3: the HEIC photo's viewing copy (a JPEG in its own .vdf). Recovery exports it.
+  const viewCopy = {
+    fileId: randomId(),
+    data: new Uint8Array(readFileSync('tests/fixtures/assets/IMG_0100-view.jpg')),
+  }
   // Thumbnails are opaque to recovery (it skips them), so stand-in bytes are enough here.
   const thumbs = [
     { fileId: randomId(), data: pseudoRandom(2_000, 17) },
     { fileId: randomId(), data: pseudoRandom(2_500, 19) },
+    { fileId: randomId(), data: pseudoRandom(1_500, 23) },
   ]
   const att = (i: number) => ({
     fileId: files[i].fileId,
@@ -142,6 +161,17 @@ it('writes the sample vault fixture', async () => {
         { ...att(5), thumbFileId: thumbs[1].fileId, durationMs: 62_000 },
       ],
     },
+    {
+      id: randomId(),
+      date: '2026-03-08',
+      createdAt: '2026-03-08T18:30:00.000Z',
+      updatedAt: '2026-03-08T18:31:00.000Z',
+      title: 'Sunset from the iPhone',
+      body: 'A HEIC photo with a viewing copy.',
+      tags: [],
+      mood: 5,
+      attachments: [{ ...att(6), thumbFileId: thumbs[2].fileId, viewCopyFileId: viewCopy.fileId }],
+    },
   ]
 
   const dir = join(ROOT, 'VaultDiary')
@@ -152,7 +182,10 @@ it('writes the sample vault fixture', async () => {
       await encryptBytes(mk, e.id, 'entry', utf8(JSON.stringify(e))),
     )
   }
-  for (const f of [...files, ...thumbs.map((t) => ({ ...t, chunkSize: undefined }))]) {
+  for (const f of [
+    ...files,
+    ...[...thumbs, viewCopy].map((t) => ({ ...t, chunkSize: undefined })),
+  ]) {
     const parts: Uint8Array[] = []
     for await (const p of encryptContainer(mk, {
       id: f.fileId,
@@ -196,7 +229,8 @@ it('writes the sample vault fixture', async () => {
   files.forEach((f, i) =>
     write(join(exp, i === 3 ? orphanPath(f.fileId) : attachmentPath(f.fileId, f.name)), f.data),
   )
-  // Thumbnails are not exported.
+  // Thumbnails are not exported; viewing copies are, next to the original.
+  write(join(exp, viewCopyPath(files[6].fileId, files[6].name)), viewCopy.data)
 
   write(
     join(ROOT, 'secrets.json'),

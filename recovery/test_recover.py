@@ -55,8 +55,9 @@ class RecoverTest(unittest.TestCase):
     def test_passphrase_folder(self):
         entries, files, problems = self.run_recover([VAULT_DIR])
         self.assertEqual(problems, [])
-        self.assertEqual(len(entries), 4)
-        self.assertEqual(len(files), 6)  # thumbnails are skipped
+        self.assertEqual(len(entries), 5)
+        # 7 attachments (with the unreferenced one) + 1 HEIC viewing copy; thumbnails are skipped
+        self.assertEqual(len(files), 8)
         self.assert_matches_expected()
 
     def test_recovery_words(self):
@@ -122,7 +123,7 @@ class RecoverTest(unittest.TestCase):
         with open(path, "wb") as fh:
             fh.write(data)
         entries, files, problems = self.run_recover([vault])
-        self.assertEqual(len(files), 5)
+        self.assertEqual(len(files), 7)
         self.assertTrue(any("chunk 1 failed authentication" in p for p in problems), problems)
         self.assertFalse(any(n.endswith(".partial") for n in os.listdir(os.path.join(self.out, "files"))))
 

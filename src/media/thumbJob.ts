@@ -12,6 +12,7 @@ import { isId } from '../crypto/bytes'
 import { compareEntriesDesc, type Attachment, type Entry } from '../model/entry'
 import type { VaultDB } from '../storage/db'
 import { LARGE_FILE } from './kind'
+import { isHeic } from './heic'
 import { thumbnailable } from './thumbnail'
 
 const FAILED_KEY = 'thumbFailed'
@@ -47,10 +48,19 @@ export interface ThumbState {
   failed: Record<string, number>
 }
 
+/**
+ * The file a thumbnail is made from: a HEIC photo's JPEG viewing copy when it has one (every
+ * browser can decode that), otherwise the attachment itself. Failures are counted per source,
+ * so a HEIC photo that failed before it had a viewing copy is tried again.
+ */
+export function thumbSource(a: Attachment): string {
+  return isHeic(a.mime, a.name) && isId(a.viewCopyFileId) ? a.viewCopyFileId : a.fileId
+}
+
 /** Does this attachment need a (new) thumbnail? Pure, so it can be tested. */
 export function needsThumbnail(a: Attachment, state: ThumbState): boolean {
   if (!thumbnailable(a.mime, a.name) || a.size > LARGE_FILE) return false
-  if ((state.failed[a.fileId] ?? 0) >= MAX_TRIES) return false
+  if ((state.failed[thumbSource(a)] ?? 0) >= MAX_TRIES) return false
   const t = a.thumbFileId
   if (!isId(t)) return true
   if (state.local.has(t) || state.queued.has(t)) return false
@@ -125,17 +135,21 @@ export class ThumbnailJob extends Emitter {
       if (this.stopped || !current || current.locked) return
       this.set({ remaining: this.status.remaining - 1 })
       if (this.deps.isEditing(entry.id)) continue
-      const encrypted = await this.deps.fetchEncrypted(attachment.fileId).catch(() => null)
+      const source = thumbSource(attachment)
+      const encrypted = await this.deps.fetchEncrypted(source).catch(() => null)
       if (!encrypted) continue // not reachable now (offline); try again next time
       let jpeg: Blob | null
       try {
-        const plain = await current.decryptAttachment(attachment, encrypted)
+        const plain =
+          source === attachment.fileId
+            ? await current.decryptAttachment(attachment, encrypted)
+            : await current.decryptThumbnail(source, encrypted)
         jpeg = await this.deps.make(plain, thumbnailable(attachment.mime, attachment.name)!)
       } catch {
         jpeg = null
       }
       if (!jpeg) {
-        state.failed[attachment.fileId] = (state.failed[attachment.fileId] ?? 0) + 1
+        state.failed[source] = (state.failed[source] ?? 0) + 1
         await this.deps.db.setKv(FAILED_KEY, state.failed)
         this.set({ failed: this.status.failed + 1 })
         continue

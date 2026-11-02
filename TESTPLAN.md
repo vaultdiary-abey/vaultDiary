@@ -239,6 +239,29 @@ and fully uploaded (Settings → Sync shows nothing waiting).
 - [ ] DevTools (laptop) → Network: Drive requests for the video have a `Range` header and
       return 206; no request downloads the whole `.vdf`.
 
+## W. HEIC viewing copies and unplayable videos (Phase 3, milestone C)
+
+- [ ] **iPhone**: add a photo from Photos (iPhone photos are HEIC unless Settings → Camera →
+      Formats is "Most Compatible"). Wait until it has uploaded.
+- [ ] **Laptop Chrome**: open that entry. The photo shows (it's the JPEG viewing copy; the viewer
+      says so). **Download** saves the original `.HEIC` (same size as on the iPhone). The
+      timeline thumbnail shows too.
+- [ ] **iPhone**: the same photo opens as the original (no "viewing copy" note).
+- [ ] **Older photos**: on the laptop, Settings → "Photos from iPhone (HEIC)" says this browser
+      can't make viewing copies. On the iPhone, the same card says "N HEIC photos without a
+      viewing copy" → **Make viewing copies for older photos** → progress, then "Every HEIC
+      photo has a viewing copy". Try **Stop** halfway and start again: it continues. Afterwards
+      the laptop shows those photos too.
+- [ ] A HEIC photo without a viewing copy on the laptop shows its thumbnail (if any), a plain
+      message and **Download**.
+- [ ] **Video**: on a Windows/Linux laptop (or Firefox), open a video recorded on the iPhone
+      (HEVC unless "Most Compatible"). It says in plain words that this browser can't play HEVC
+      and offers **Download**. On the iPhone and on a Mac it plays.
+- [ ] **Export / recovery**: Settings → Export → Markdown includes `IMG_…-view.jpg` next to
+      `IMG_….HEIC`. The PDF export on the laptop prints the photo. A backup recovered with
+      recovery.html and with recover.py contains both files; the entry's `.md` links "Viewing
+      copy (JPEG)".
+
 ## U. App updates
 
 - [ ] With the app open (also the home-screen app), deploy a new version. Within an hour, or
