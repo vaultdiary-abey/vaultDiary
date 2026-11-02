@@ -23,7 +23,7 @@ import {
   unwrapWithPasskey,
   wrapperForCredential,
 } from '../crypto/passkey'
-import { equalBytes, fromBase64Url, randomBytes, wipe } from '../crypto/bytes'
+import { equalBytes, fromBase64Url, isId, randomBytes, wipe } from '../crypto/bytes'
 import {
   createPasskey,
   evaluatePrf,
@@ -57,10 +57,12 @@ import {
 import { LARGE_FILE } from '../media/kind'
 import { RecordingStore, type RecordingMeta } from '../media/recordingStore'
 import { ThumbnailJob } from '../media/thumbJob'
+import { ViewCopyJob } from '../media/viewCopyJob'
 import { loadSearchCache, saveSearchCache } from '../search/searchCache'
 import { SearchIndex } from '../search/searchIndex'
 import { renameTag as renameTagIn, hasTag } from '../model/tags'
 import { makeThumbnail, thumbnailable } from '../media/thumbnail'
+import { canDecodeHeic, isHeic, makeViewCopy } from '../media/heic'
 import { newEntry, type Attachment, type Entry } from '../model/entry'
 import { KV, VaultDB } from '../storage/db'
 import { SyncEngine } from '../sync/sync'
@@ -126,6 +128,8 @@ export class Controller extends Emitter {
   /** Recordings left over from a crash, a closed tab or a lock, offered for recovery. */
   pendingRecordings: RecordingMeta[] = []
   thumbJob: ThumbnailJob | null = null
+  /** Settings → "Make viewing copies for older photos" (HEIC). */
+  viewCopyJob: ViewCopyJob | null = null
   /** Decrypted thumbnails, in memory only (object URLs), dropped on lock. */
   private thumbUrls = new Map<string, Promise<string | null>>()
   private thumbSlots = 3
@@ -683,6 +687,15 @@ export class Controller extends Emitter {
       make: makeThumbnail,
       isEditing: (id) => this.editing.has(id),
     })
+    const viewCopyJob = new ViewCopyJob({
+      db: this.db,
+      session: () => this.session,
+      canDecode: canDecodeHeic,
+      fetchEncrypted: (fileId) => this.encryptedFile(fileId).catch(() => null),
+      make: makeViewCopy,
+      isEditing: (id) => this.editing.has(id),
+      queuedUploads: () => this.db.uploads.count(),
+    })
     let lastSynced: number | null = null
     this.unsubscribers = [
       session.subscribe(() => {
@@ -699,8 +712,10 @@ export class Controller extends Emitter {
         }
       }),
       thumbJob.subscribe(() => this.emit()),
+      viewCopyJob.subscribe(() => this.emit()),
     ]
     this.thumbJob = thumbJob
+    this.viewCopyJob = viewCopyJob
     this.session = session
     this.sync = sync
     this.lastActivity = Date.now()
@@ -742,6 +757,8 @@ export class Controller extends Emitter {
     this.unsubscribers = []
     this.thumbJob?.stop()
     this.thumbJob = null
+    this.viewCopyJob?.stop()
+    this.viewCopyJob = null
     this.dropThumbnails()
     this.exportGrantUntil = 0
     this.printRange = null
@@ -811,6 +828,15 @@ export class Controller extends Emitter {
       attachment,
       await this.encryptedFile(attachment.fileId, onProgress),
     )
+  }
+
+  /** A HEIC photo's decrypted JPEG viewing copy (FORMAT.md revision 3). */
+  async viewCopyBlob(attachment: Attachment): Promise<Blob> {
+    const session = this.session
+    const id = attachment.viewCopyFileId
+    if (!session) throw new Error('The vault is locked.')
+    if (!isId(id)) throw new Error('This photo has no viewing copy.')
+    return session.decryptThumbnail(id, await this.encryptedFile(id))
   }
 
   // ---------------------------------------------------------------- streaming playback
@@ -1278,7 +1304,27 @@ export class Controller extends Emitter {
     const session = this.session
     if (!session) throw new Error('The vault is locked.')
     const attachment = await session.addAttachment(file, onProgress)
-    return this.thumbnailFor(file, attachment)
+    return this.viewCopyFor(file, await this.thumbnailFor(file, attachment))
+  }
+
+  /**
+   * For a HEIC photo on a browser that can decode it (e.g. iPhone Safari): also a JPEG viewing
+   * copy (quality 0.9, longest side ≤ 4096 px), encrypted and queued like any file, so other
+   * browsers can show the photo. The original is always kept.
+   */
+  private async viewCopyFor(file: Blob, attachment: Attachment): Promise<Attachment> {
+    const session = this.session
+    if (!session || !isHeic(attachment.mime, attachment.name) || file.size > LARGE_FILE) {
+      return attachment
+    }
+    try {
+      if (!(await canDecodeHeic())) return attachment
+      const jpeg = await makeViewCopy(file)
+      if (!jpeg) return attachment
+      return { ...attachment, viewCopyFileId: await session.addViewCopy(jpeg) }
+    } catch {
+      return attachment // Settings → "Make viewing copies for older photos" can do it later
+    }
   }
 
   // ---------------------------------------------------------------- app updates

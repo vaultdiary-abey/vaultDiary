@@ -9,6 +9,8 @@ import { formatDay, formatTime } from '../lib/dates'
 import { renderMarkdown } from '../lib/markdown'
 import { LARGE_FILE, mediaKind } from '../media/kind'
 import { scaleImageToJpeg } from '../media/thumbnail'
+import { canDecodeHeic, isHeic } from '../media/heic'
+import { isId } from '../crypto/bytes'
 import { displayTitle, MOODS, type Attachment, type Entry } from '../model/entry'
 import { ProgressBar, Spinner } from './components'
 import { useController } from './controllerContext'
@@ -98,17 +100,23 @@ export function PrintView({ range }: { range: DateRange }) {
     })()
     /** A blob: URL of the photo scaled for print, or of its thumbnail as a fallback. */
     async function printableImage(a: Attachment): Promise<string | null> {
-      if (a.size <= LARGE_FILE) {
-        const scaled = await scaleImageToJpeg(await c.attachmentBlob(a), PRINT_MAX, 0.85).catch(
-          () => null,
-        )
-        if (scaled) {
-          const url = URL.createObjectURL(scaled)
-          urls.push(url)
-          return url
-        }
+      const scaled = async (blob: Promise<Blob>) => {
+        const jpeg = await scaleImageToJpeg(await blob, PRINT_MAX, 0.85).catch(() => null)
+        if (!jpeg) return null
+        const url = URL.createObjectURL(jpeg)
+        urls.push(url)
+        return url
       }
-      // The browser can't decode it (e.g. HEIC outside Apple devices): print the thumbnail.
+      // A HEIC photo on a browser that can't decode HEIC: print its JPEG viewing copy.
+      const heicCopy = isHeic(a.mime, a.name) && isId(a.viewCopyFileId) && !(await canDecodeHeic())
+      if (heicCopy) {
+        const url = await scaled(c.viewCopyBlob(a)).catch(() => null)
+        if (url) return url
+      } else if (a.size <= LARGE_FILE) {
+        const url = await scaled(c.attachmentBlob(a)).catch(() => null)
+        if (url) return url
+      }
+      // The browser can't decode it and there's no viewing copy: print the thumbnail.
       // Its URL belongs to the thumbnail cache, which revokes it on lock.
       return a.thumbFileId ? c.thumbnailUrl(a.thumbFileId) : null
     }

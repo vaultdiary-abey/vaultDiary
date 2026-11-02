@@ -22,6 +22,7 @@ import { liveTemplates, setShowPrompts } from '../../model/settings'
 import { href } from '../router'
 import { Passkeys } from './Passkeys'
 import { ExportCard } from './Export'
+import { ViewCopies } from './ViewCopies'
 import { BackupProgress, BackupReminder } from '../Reminders'
 import { useBackup, useLastBackup } from '../useBackup'
 import { UploadsList } from './UploadsList'
@@ -396,6 +397,7 @@ export function Settings() {
       <Passkeys />
       {!c.readOnly && <ChangePassphrase />}
       <Storage />
+      <ViewCopies />
       <Backup />
       <ExportCard />
       <DangerZone />
