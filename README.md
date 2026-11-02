@@ -7,6 +7,7 @@ A private, end-to-end encrypted diary that runs entirely in your browser and sto
 - Entries in Markdown, any number per day, autosave, mood, attachments of any type and size.
 - Photo, audio, video and PDF viewers; record voice notes, videos and photos in the app;
   thumbnails on the timeline.
+- On-device search with filters, tags, writing streaks, a year heatmap and mood stats.
 - Timeline, month calendar, conflict-safe sync between devices.
 - Unlock with a passphrase, a passkey (Face ID, Touch ID, Apple or Google passkeys) or, if you
   forget the passphrase, with 24 recovery words.
@@ -15,8 +16,8 @@ A private, end-to-end encrypted diary that runs entirely in your browser and sto
 - No analytics, no trackers, no third-party scripts except Google's own sign-in library, and a
   strict Content Security Policy.
 
-Status: **Phase 2** in progress (see [PLAN.md](PLAN.md)): passkey unlock, media viewers, recording
-and thumbnails are done; search and tags, templates follow. Security notes: [SECURITY.md](SECURITY.md).
+Status: **Phase 2** in progress (see [PLAN.md](PLAN.md)): passkey unlock, media and recording,
+search, tags and insights are done; templates follow. Security notes: [SECURITY.md](SECURITY.md).
 
 ## How it protects your diary
 

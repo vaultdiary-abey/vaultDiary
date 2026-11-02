@@ -66,6 +66,14 @@ What this does and doesn't rely on:
   memory while recording, so the last pieces are still saved (encrypted) if the diary locks
   mid-recording. Kept or discarded recordings are deleted from IndexedDB at once.
 
+## Search
+
+Search runs on the device. The full-text index (MiniSearch, bundled) lives in memory while the
+diary is unlocked and is dropped on lock. To avoid re-indexing a large diary on every unlock, a
+copy is kept in IndexedDB, encrypted with the master key in the vault's own container format
+(`kind: "cache"`). It never leaves the device and is deleted with "Remove vault from this
+device". Search terms are never sent anywhere.
+
 ## Origins: GitHub Pages and Firebase
 
 The browser isolates storage, service workers, installed apps and passkeys **per origin**
