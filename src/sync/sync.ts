@@ -16,7 +16,8 @@ import {
   type DriveClient,
   type DriveFile,
 } from '../drive/types'
-import { INDEX_FILE, VAULT_FILE, type VaultLocation } from '../drive/vaultFolder'
+import { INDEX_FILE, SETTINGS_FILE, VAULT_FILE, type VaultLocation } from '../drive/vaultFolder'
+import { mergeSettings } from '../model/settings'
 import { buildIndex, conflictCopy, mergeThumbnailsOnly, type Entry } from '../model/entry'
 import { KV, type EntryRecord, type VaultDB } from '../storage/db'
 
@@ -132,6 +133,12 @@ export class SyncEngine extends Emitter {
         if (!readOnly) await db.setKv(KV.vaultDirty, true)
       }
       await this.syncVault(drive, location, vaultRemote, problems)
+      try {
+        await this.syncSettings(drive, location, newest(SETTINGS_FILE))
+      } catch (e) {
+        if (e instanceof AuthError || e instanceof OfflineError) throw e
+        problems.push(`settings.vds: ${(e as Error).message}`)
+      }
       if (!readOnly) await this.processDeletes(drive, location)
       const indexRemote = newest(INDEX_FILE)
       const pulled = await this.pull(
@@ -183,6 +190,47 @@ export class SyncEngine extends Emitter {
       await db.setKv(KV.vaultMd5, remote.md5)
       if (text !== json) this.deps.onVaultChanged?.(text)
     }
+  }
+
+  /**
+   * settings.vds: Drive's copy and this device's are merged (templates by id, newest wins,
+   * deletions kept), then the result is uploaded if Drive doesn't have it yet.
+   */
+  private async syncSettings(
+    drive: DriveClient,
+    location: VaultLocation,
+    remote: DriveFile | null,
+  ) {
+    const { db, session, readOnly } = this.deps
+    let dirty = !!(await db.getKv<boolean>(KV.settingsDirty))
+    const rev = (await db.getKv<number>(KV.settingsRev)) ?? 0
+    if (remote && remote.md5 !== (await db.getKv<string>(KV.settingsMd5))) {
+      const data = await blobBytes(await drive.download(remote.id))
+      const theirs = await session.decryptSettings(data)
+      const merged = mergeSettings(session.settings, theirs)
+      const same = JSON.stringify(merged) === JSON.stringify(theirs)
+      await db.setKv(KV.settingsMd5, remote.md5)
+      if (same) {
+        await session.applySettings(theirs, data)
+      } else {
+        await session.applySettings(merged, await session.encryptSettings(merged))
+        dirty = true
+      }
+    }
+    if (!dirty || readOnly) return
+    const data = await db.getKv<Uint8Array<ArrayBuffer>>(KV.settingsData)
+    if (!data) return
+    const blob = new Blob([data])
+    const file = remote
+      ? await drive.updateFile(remote.id, blob)
+      : await drive.createFile(location.rootId, SETTINGS_FILE, blob)
+    await db.transaction('rw', db.kv, async () => {
+      await db.setKv(KV.settingsMd5, file.md5)
+      // An edit made while uploading stays pending for the next round.
+      if (((await db.getKv<number>(KV.settingsRev)) ?? 0) === rev) {
+        await db.setKv(KV.settingsDirty, false)
+      }
+    })
   }
 
   /**

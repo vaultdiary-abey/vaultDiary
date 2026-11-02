@@ -232,3 +232,17 @@ export function mergeThumbnailsOnly(
     .filter((t) => !kept.has(t))
   return { merged: { ...remote, attachments }, changed, dropped }
 }
+
+/**
+ * Title for an entry saved without one: its date and its place among that day's entries,
+ * e.g. "2 Nov 2026 · Entry 2".
+ */
+export function defaultTitle(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const day = new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+  return `${day} · Entry ${n}`
+}
