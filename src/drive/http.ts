@@ -250,6 +250,25 @@ export class HttpDrive implements DriveClient {
     return new Blob(parts)
   }
 
+  async downloadRange(fileId: string, start: number, end: number) {
+    const res = await this.request(
+      `${API}/files/${encodeURIComponent(fileId)}?alt=media`,
+      { headers: { Range: `bytes=${start}-${end}` } },
+      60_000,
+    )
+    if (!res.ok) throw await this.error(res)
+    if (res.status !== 206) {
+      // Drive ignored the Range header and is sending the whole file: don't download it all.
+      void res.body?.cancel().catch(() => {})
+      throw new DriveError(0, 'Google Drive does not allow partial downloads right now.')
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    if (bytes.length !== end - start + 1) {
+      throw new OfflineError('Google Drive sent an incomplete answer; trying again.')
+    }
+    return bytes
+  }
+
   async trash(fileId: string): Promise<void> {
     const res = await this.request(`${API}/files/${encodeURIComponent(fileId)}?fields=id`, {
       method: 'PATCH',
