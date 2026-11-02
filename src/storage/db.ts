@@ -143,5 +143,7 @@ export const KV = {
   indexMd5: 'indexMd5',
   indexDriveId: 'indexDriveId',
   lastSyncedAt: 'lastSyncedAt',
+  /** Encrypted search index (container kind "cache"), local only. */
+  searchCache: 'searchCache',
   account: 'account',
 } as const

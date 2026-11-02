@@ -4,7 +4,8 @@ export type Route =
   | { name: 'day'; date: string | null }
   | { name: 'entry'; id: string; edit: boolean }
   | { name: 'new'; date: string | null }
-  | { name: 'timeline' }
+  | { name: 'timeline'; tag: string | null }
+  | { name: 'insights'; year: number | null }
   | { name: 'calendar'; month: string | null }
   | { name: 'settings' }
 
@@ -21,8 +22,19 @@ export function parseRoute(hash: string): Route {
         : { name: 'day', date: null }
     case 'new':
       return { name: 'new', date: date(a) }
-    case 'timeline':
-      return { name: 'timeline' }
+    case 'timeline': {
+      let tag: string | null = null
+      if (a === 'tag' && b) {
+        try {
+          tag = decodeURIComponent(b)
+        } catch {
+          tag = null
+        }
+      }
+      return { name: 'timeline', tag }
+    }
+    case 'insights':
+      return { name: 'insights', year: a && /^\d{4}$/.test(a) ? Number(a) : null }
     case 'calendar':
       return { name: 'calendar', month: a && /^\d{4}-\d{2}$/.test(a) ? a : null }
     case 'settings':
@@ -41,7 +53,9 @@ export function href(route: Route): string {
     case 'new':
       return route.date ? `#/new/${route.date}` : '#/new'
     case 'timeline':
-      return '#/timeline'
+      return route.tag ? `#/timeline/tag/${encodeURIComponent(route.tag)}` : '#/timeline'
+    case 'insights':
+      return route.year ? `#/insights/${route.year}` : '#/insights'
     case 'calendar':
       return route.month ? `#/calendar/${route.month}` : '#/calendar'
     case 'settings':

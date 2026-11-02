@@ -147,6 +147,27 @@ Use a real device for each row. "Add" = Settings → Passkeys → **Add passkey*
       `Permissions-Policy: camera=(self), microphone=(self), …` and `media-src 'self' blob:` in
       the CSP.
 
+## S. Search, tags, mood, streaks (Phase 2, milestone C)
+
+- [ ] **Tags**: in an entry, type a tag and press Enter (or a comma); it becomes a chip. Typing
+      the start of a known tag suggests it; tap the suggestion. ✕ removes a tag. Tags appear on
+      the timeline cards and the entry; tapping one lists all entries with it.
+- [ ] **Search** (Timeline tab): search a word from a body, a title, a tag and an attachment's
+      file name. Accents and capitals don't matter (`cafe` finds "Café"); the start of a word is
+      enough. Matching words are highlighted. Works offline (airplane mode).
+- [ ] **Filters**: date range, a tag, several moods, "Has attachments", Photos / Videos. The
+      count and results update; "Clear all filters" resets. Open a result and go back: the search
+      is still there.
+- [ ] **Insights**: "days in a row" counts today (or yesterday, if you haven't written today
+      yet) backwards; the longest streak is right. The heatmap marks the right days (darker =
+      more entries); tapping a day opens it; the year menu switches years. Mood bars and the
+      average match your entries.
+- [ ] **Rename a tag** in Insights → Tags: every entry with it changes (also on the other device
+      after sync). Renaming to an existing tag merges them.
+- [ ] Lock and unlock a diary with many entries: the first search after unlocking is instant.
+- [ ] On a new device while entries are still downloading, search finds them by title and summary
+      and says so; renaming a tag asks you to wait until everything has downloaded.
+
 ## U. App updates
 
 - [ ] With the app open (also the home-screen app), deploy a new version. Within an hour, or

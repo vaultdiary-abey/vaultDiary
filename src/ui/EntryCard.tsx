@@ -1,12 +1,23 @@
 import { MOODS } from '../model/entry'
+import type { Snippet } from '../search/text'
 import type { ListItem } from '../core/session'
 import { itemData } from './itemData'
 import { formatTime } from '../lib/dates'
 import { href } from './router'
 import { Thumb } from './Thumb'
 
-export function EntryCard({ item, showDate = false }: { item: ListItem; showDate?: boolean }) {
+export function EntryCard({
+  item,
+  showDate = false,
+  snippet = null,
+}: {
+  item: ListItem
+  showDate?: boolean
+  /** A search hit's context, with the matching words marked. */
+  snippet?: Snippet | null
+}) {
   const d = itemData(item)
+  const tags = item.kind === 'entry' ? item.entry.tags : item.summary.tags
   const mood = MOODS.find((m) => m.value === d.mood)
   return (
     <a
@@ -21,7 +32,24 @@ export function EntryCard({ item, showDate = false }: { item: ListItem; showDate
           </span>
         )}
       </div>
-      {d.excerpt && d.excerpt !== d.title && <p className="entry-card-excerpt">{d.excerpt}</p>}
+      {snippet ? (
+        <p className="entry-card-excerpt">
+          {snippet.before}
+          {snippet.parts.map((p, i) => (p.match ? <mark key={i}>{p.text}</mark> : p.text))}
+          {snippet.after}
+        </p>
+      ) : (
+        d.excerpt && d.excerpt !== d.title && <p className="entry-card-excerpt">{d.excerpt}</p>
+      )}
+      {tags.length > 0 && (
+        <div className="tag-line">
+          {tags.map((t) => (
+            <span key={t} className="tag">
+              #{t}
+            </span>
+          ))}
+        </div>
+      )}
       {item.kind === 'entry' && item.entry.attachments.length > 0 && (
         <div className="thumb-strip">
           {item.entry.attachments.slice(0, 4).map((a) => (

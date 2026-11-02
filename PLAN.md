@@ -111,3 +111,16 @@ Decisions for B:
   becoming conflict copies (the background job runs on every device).
 - `npm run build:e2e`: a production build in mode "e2e" with the fake Drive, so e2e tests run with
   the real CSP and service worker. CI checks the fake Drive is not in `dist/`.
+
+Decisions for C:
+
+- Search: MiniSearch 7.2.0 (bundled), fields title, body (Markdown as plain text), tags and
+  attachment names; prefix matching, small typos (words of 5+ letters), case- and
+  accent-insensitive, all words must match. Entries still downloading are searched by their
+  index summary. Kept up to date incrementally.
+- The optional search cache is used: indexing 3,000 long entries took ~0.5 s on a server (more on
+  a phone); loading the cache ~30 ms. Stored encrypted with container kind "cache" (local only).
+- Search and filters live in the Timeline tab; a new Insights tab has streaks, the heatmap, mood
+  stats and the tag list (with rename). Tag rename needs every entry downloaded first.
+- Streak: consecutive days with entries up to today; a day without an entry yet doesn't break
+  it until it is over.

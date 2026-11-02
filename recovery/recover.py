@@ -48,8 +48,9 @@ TAG_LENGTH = 16
 CHUNK_OVERHEAD = IV_LENGTH + TAG_LENGTH
 MAX_HEADER_LENGTH = 64 * 1024
 MAX_CHUNK_SIZE = 64 * 1024 * 1024
-# "settings" (settings.vds, FORMAT.md revision 2) holds app settings; recovery skips it.
-KINDS = ("entry", "file", "index", "settings")
+# "settings" (settings.vds, FORMAT.md revision 2) holds app settings; "cache" is local-only and
+# never on Drive. Recovery skips both.
+KINDS = ("entry", "file", "index", "settings", "cache")
 ID_RE = re.compile(r"^[0-9a-f]{32}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VAULT_FORMAT = "vaultdiary-vault"

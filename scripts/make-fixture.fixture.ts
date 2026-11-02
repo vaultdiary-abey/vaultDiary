@@ -100,7 +100,7 @@ it('writes the sample vault fixture', async () => {
       updatedAt: '2026-01-15T08:30:00.000Z',
       title: 'First day',
       body: '## Morning\n\nCafé ☕ — naïve façade.\n\n- one\n- two\n\n**bold** and _italic_.',
-      tags: [],
+      tags: ['Café', 'first days'],
       mood: 4,
       attachments: [att(0), att(1)],
     },
@@ -133,7 +133,7 @@ it('writes the sample vault fixture', async () => {
       updatedAt: '2026-03-05T06:00:00.000Z',
       title: '🌧️ Rainy day',
       body: '',
-      tags: [],
+      tags: ['weather'],
       mood: 3,
       attachments: [
         { ...att(4), thumbFileId: thumbs[0].fileId },

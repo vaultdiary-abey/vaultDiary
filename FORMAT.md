@@ -269,7 +269,9 @@ All payloads are UTF-8 JSON. All metadata lives inside the ciphertext.
 - `date` is the calendar day `YYYY-MM-DD` in the writer's local time zone.
 - `createdAt`, `updatedAt` are ISO 8601 UTC timestamps.
 - `body` is Markdown (CommonMark/GFM).
-- `tags` is an array of strings (always empty in Phase 1).
+- `tags` is an array of strings (empty in Phase 1). Tags are free text without a leading `#`,
+  at most 40 characters; the app treats tags that differ only in case or accents as the same
+  tag.
 - `mood` is an integer 1 (awful) … 5 (great), or `null`.
 - `attachments[].fileId` is the id of a `files/<fileId>.vdf` container; `name`, `mime` and `size`
   are the original file's name, MIME type and byte length. `mime` may carry parameters, e.g.
@@ -318,7 +320,14 @@ Drive's thumbnails are kept, and the other version's fill attachments that have 
 The index only speeds up the first load on a new device. It can always be rebuilt from the
 entries and may be stale or missing; recovery tools ignore it. Its container `id` is random.
 
-### 5.4 Settings (`kind: "settings"`, revision 2)
+### 5.4 Local-only containers (`kind: "cache"`, revision 2)
+
+The app may keep data derived from the diary in the browser's IndexedDB using this same
+container format with `kind: "cache"`, for example the search index. These containers are
+never written to Drive or into backups, contain nothing that isn't in the entries, and are
+skipped by readers.
+
+### 5.5 Settings (`kind: "settings"`, revision 2)
 
 `settings.vds` in the folder root holds app settings such as entry templates (Phase 2,
 milestone D; its payload is documented there). Recovery tools skip it: it holds no diary
@@ -346,8 +355,9 @@ recovery words.
 - **Revision 2** (Phase 2):
   - `webauthn-prf` passkey wrappers in `vault.json` (§3.3), previously only reserved.
   - Optional `updatedAt` on the passphrase wrapper (§3.1) and the merge rules (§3.4).
-  - Container kind `"settings"` (`settings.vds`, §5.4); updated recovery tools skip it silently.
+  - Container kind `"settings"` (`settings.vds`, §5.5); updated recovery tools skip it silently.
   - Readers keep unknown entry and attachment fields (§5.1).
   - Optional attachment field `thumbFileId` (§5.1): a JPEG preview in its own `.vdf`. Updated
     recovery tools skip thumbnail files; older ones export them as `…-unreferenced.bin`.
   - In-app recordings are ordinary attachments; their `mime` may include codec parameters.
+  - Tags are now used (§5.1). Local-only container kind `"cache"` (§5.4), never on Drive.
