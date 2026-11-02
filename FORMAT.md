@@ -329,10 +329,44 @@ skipped by readers.
 
 ### 5.5 Settings (`kind: "settings"`, revision 2)
 
-`settings.vds` in the folder root holds app settings such as entry templates (Phase 2,
-milestone D; its payload is documented there). Recovery tools skip it: it holds no diary
-content. Readers written before revision 2 report it as one "unknown file kind" problem and
-recover everything else normally.
+`settings.vds` in the folder root holds settings that sync between devices. Its container `id`
+is random (a new one on every write, like the index). Payload:
+
+```json
+{
+  "v": 1,
+  "templates": [
+    {
+      "id": "7c1e…32 hex…",
+      "name": "Gratitude",
+      "title": "",
+      "body": "## Three good things\n1. \n2. \n3. ",
+      "tags": ["gratitude"],
+      "createdAt": "2026-11-02T09:00:00.000Z",
+      "updatedAt": "2026-11-02T09:00:00.000Z"
+    },
+    {
+      "id": "…",
+      "name": "",
+      "title": "",
+      "body": "",
+      "tags": [],
+      "createdAt": "…",
+      "updatedAt": "…",
+      "deleted": true
+    }
+  ],
+  "showPrompts": { "value": true, "updatedAt": "2026-11-02T09:00:00.000Z" }
+}
+```
+
+- A template's `title` is used for new entries; empty means the app's default title (the
+  entry's date and its number among that day's entries, e.g. "2 Nov 2026 · Entry 2").
+- `deleted: true` is a tombstone, so a deletion isn't undone by another device's older copy.
+- Merging two copies: templates by `id`, the newer `updatedAt` wins; `showPrompts` likewise.
+  Unknown fields are kept.
+- Recovery tools skip `settings.vds`: it holds no diary content. Readers written before revision
+  2 report it as one "unknown file kind" problem and recover everything else normally.
 
 ## 6. Backup zip
 
@@ -355,7 +389,8 @@ recovery words.
 - **Revision 2** (Phase 2):
   - `webauthn-prf` passkey wrappers in `vault.json` (§3.3), previously only reserved.
   - Optional `updatedAt` on the passphrase wrapper (§3.1) and the merge rules (§3.4).
-  - Container kind `"settings"` (`settings.vds`, §5.5); updated recovery tools skip it silently.
+  - Container kind `"settings"` (`settings.vds`, §5.5) with entry templates and the
+    writing-prompt switch; updated recovery tools skip it silently.
   - Readers keep unknown entry and attachment fields (§5.1).
   - Optional attachment field `thumbFileId` (§5.1): a JPEG preview in its own `.vdf`. Updated
     recovery tools skip thumbnail files; older ones export them as `…-unreferenced.bin`.

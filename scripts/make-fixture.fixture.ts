@@ -6,6 +6,7 @@ import { bytesSource, encryptBytes, encryptContainer } from '../src/crypto/conta
 import { makePasskeyWrapper } from '../src/crypto/passkey'
 import { createVault, unwrapWithPassphrase } from '../src/crypto/vault'
 import { buildIndex, type Entry } from '../src/model/entry'
+import { defaultSettings, saveTemplate } from '../src/model/settings'
 import { attachmentPath, entryPath, entryToMarkdown, orphanPath } from '../src/recovery/export'
 
 const ROOT = 'tests/fixtures/sample-vault'
@@ -163,6 +164,21 @@ it('writes the sample vault fixture', async () => {
     }
     write(join(dir, 'files', `${f.fileId}.vdf`), Buffer.concat(parts))
   }
+  // Phase 2: settings.vds with a template. Recovery tools skip it (it holds no diary content).
+  const settings = saveTemplate(
+    defaultSettings(),
+    {
+      name: 'Gratitude',
+      title: '',
+      body: '## Three good things\n1. \n2. \n3. ',
+      tags: ['gratitude'],
+    },
+    new Date('2026-03-01T09:00:00.000Z'),
+  )
+  write(
+    join(dir, 'settings.vds'),
+    await encryptBytes(mk, randomId(), 'settings', utf8(JSON.stringify(settings))),
+  )
   const indexId = randomId()
   write(
     join(dir, 'index.vdi'),
