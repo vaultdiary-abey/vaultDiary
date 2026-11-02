@@ -1,6 +1,7 @@
 // Plain-text export layout shared by recovery.html. recover.py implements the same rules and a
 // test checks both produce byte-identical files from the committed fixture.
-import { displayTitle, type Entry } from '../model/entry'
+import { isId } from '../crypto/bytes'
+import { compareEntriesDesc, displayTitle, type Entry } from '../model/entry'
 
 export function slugify(title: string): string {
   const ascii = title
@@ -61,4 +62,49 @@ export function entryToMarkdown(e: Entry, available: (fileId: string) => boolean
     lines.push('')
   }
   return lines.join('\n')
+}
+
+export interface RecoveryOutput {
+  path: string
+  blob: Blob
+}
+
+/**
+ * Turns decrypted entries and attachment files into the plain-text export layout: one Markdown
+ * file per entry under entries/<date>/ and the attachments under files/. Used by recovery.html
+ * and by the app's Markdown export (Settings → Export). Files that no entry references are
+ * written as …-unreferenced.bin, except thumbnails, which are previews and not exported.
+ * Missing attachments are reported in `problems`.
+ */
+export function buildOutputs(
+  entries: Entry[],
+  files: Map<string, Blob>,
+  problems: string[],
+): RecoveryOutput[] {
+  const sorted = [...entries].sort(compareEntriesDesc)
+  const outputs: RecoveryOutput[] = []
+  const named = new Map<string, string>()
+  // Oldest entry first so the first reference to a file decides its name, as in recover.py.
+  for (const e of [...sorted].reverse()) {
+    for (const a of e.attachments) {
+      if (!named.has(a.fileId)) named.set(a.fileId, attachmentPath(a.fileId, a.name))
+    }
+  }
+  for (const e of sorted) {
+    const md = entryToMarkdown(e, (id) => files.has(id))
+    outputs.push({ path: entryPath(e), blob: new Blob([md], { type: 'text/markdown' }) })
+  }
+  // Thumbnails (attachments' thumbFileId) are previews the app can remake; they are not exported.
+  const thumbs = new Set<string>()
+  for (const e of sorted) {
+    for (const a of e.attachments) if (isId(a.thumbFileId)) thumbs.add(a.thumbFileId)
+  }
+  for (const [id, blob] of files) {
+    if (!named.has(id) && thumbs.has(id)) continue
+    outputs.push({ path: named.get(id) ?? orphanPath(id), blob })
+  }
+  for (const [id, path] of named) {
+    if (!files.has(id)) problems.push(`Attachment ${path} is missing from the selected files.`)
+  }
+  return outputs
 }

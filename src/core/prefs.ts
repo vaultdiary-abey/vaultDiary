@@ -56,3 +56,24 @@ export function getMaxVideoMinutes(): number {
 export function setMaxVideoMinutes(minutes: number): void {
   write('vd.maxVideoMinutes', String(minutes))
 }
+
+/** Evening writing nudge: "HH:MM" (24 h) after which the Today view nudges, or "off". */
+export const DEFAULT_NUDGE_TIME = '20:00'
+
+export function getNudgeTime(): string {
+  const v = read('vd.nudgeTime')
+  return v === 'off' || (v && /^([01]\d|2[0-3]):[0-5]\d$/.test(v)) ? v : DEFAULT_NUDGE_TIME
+}
+
+export function setNudgeTime(value: string): void {
+  write('vd.nudgeTime', value)
+}
+
+/** The day (yyyy-MM-dd) the nudge was last dismissed, so "Not today" lasts until tomorrow. */
+export function getNudgeDismissedOn(): string | null {
+  return read('vd.nudgeDismissedOn')
+}
+
+export function setNudgeDismissedOn(day: string): void {
+  write('vd.nudgeDismissedOn', day)
+}

@@ -1,7 +1,7 @@
 // Offline recovery: takes the files of a downloaded VaultDiary folder and/or zips (our backup
 // zip or Google Drive's "Download" zips), unlocks vault.json and decrypts everything.
 // Used by recovery.html; recover.py implements the same steps.
-import { fromUtf8, isId, wipe } from '../crypto/bytes'
+import { fromUtf8, wipe } from '../crypto/bytes'
 import {
   blobSource,
   decryptBytes,
@@ -20,7 +20,7 @@ import {
 } from '../crypto/vault'
 import { compareEntriesDesc, parseEntry, type Entry } from '../model/entry'
 import { readZip, zipEntryBlob, ZipWriter } from '../lib/zip'
-import { attachmentPath, entryPath, entryToMarkdown, orphanPath } from './export'
+import { buildOutputs, type RecoveryOutput } from './export'
 
 export interface InputFile {
   path: string
@@ -114,10 +114,7 @@ export async function unlock(collected: Collected, secret: Secret): Promise<Cryp
   throw lastError
 }
 
-export interface RecoveryOutput {
-  path: string
-  blob: Blob
-}
+export type { RecoveryOutput }
 
 export interface RecoveryResult {
   entries: Entry[]
@@ -163,30 +160,7 @@ export async function decryptAll(
   onProgress?.(done, total, '')
 
   const entries = [...byId.values()].sort(compareEntriesDesc)
-  const outputs: RecoveryOutput[] = []
-  const named = new Map<string, string>()
-  // Oldest entry first so the first reference to a file decides its name, as in recover.py.
-  for (const e of [...entries].reverse()) {
-    for (const a of e.attachments) {
-      if (!named.has(a.fileId)) named.set(a.fileId, attachmentPath(a.fileId, a.name))
-    }
-  }
-  for (const e of entries) {
-    const md = entryToMarkdown(e, (id) => files.has(id))
-    outputs.push({ path: entryPath(e), blob: new Blob([md], { type: 'text/markdown' }) })
-  }
-  // Thumbnails (attachments' thumbFileId) are previews the app can remake; they are not exported.
-  const thumbs = new Set<string>()
-  for (const e of entries) {
-    for (const a of e.attachments) if (isId(a.thumbFileId)) thumbs.add(a.thumbFileId)
-  }
-  for (const [id, blob] of files) {
-    if (!named.has(id) && thumbs.has(id)) continue
-    outputs.push({ path: named.get(id) ?? orphanPath(id), blob })
-  }
-  for (const [id, path] of named) {
-    if (!files.has(id)) problems.push(`Attachment ${path} is missing from the selected files.`)
-  }
+  const outputs = buildOutputs(entries, files, problems)
   return { entries, outputs, problems }
 }
 
