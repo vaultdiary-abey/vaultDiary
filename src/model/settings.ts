@@ -32,13 +32,23 @@ export interface Settings {
   v: 1
   templates: Template[]
   showPrompts: TimedValue<boolean>
+  /**
+   * When an encrypted backup .zip was last made on any device (Phase 3, optional in the file).
+   * value is an ISO time or null; merged like other settings, by updatedAt.
+   */
+  lastBackup: TimedValue<string | null>
   [field: string]: unknown
 }
 
 const EPOCH = '1970-01-01T00:00:00.000Z'
 
 export function defaultSettings(): Settings {
-  return { v: 1, templates: [], showPrompts: { value: true, updatedAt: EPOCH } }
+  return {
+    v: 1,
+    templates: [],
+    showPrompts: { value: true, updatedAt: EPOCH },
+    lastBackup: { value: null, updatedAt: EPOCH },
+  }
 }
 
 function str(v: unknown, fallback = ''): string {
@@ -74,7 +84,12 @@ export function parseSettings(raw: unknown): Settings {
     v: 1,
     templates,
     showPrompts: timed(r.showPrompts, (v): v is boolean => typeof v === 'boolean', true),
+    lastBackup: timed(r.lastBackup, isIsoOrNull, null),
   }
+}
+
+function isIsoOrNull(v: unknown): v is string | null {
+  return v === null || (typeof v === 'string' && !Number.isNaN(Date.parse(v)))
 }
 
 function newer<T extends { updatedAt: string }>(a: T, b: T): T {
@@ -91,7 +106,14 @@ export function mergeSettings(a: Settings, b: Settings): Settings {
   const templates = [...byId.values()].sort(
     (x, y) => x.createdAt.localeCompare(y.createdAt) || x.id.localeCompare(y.id),
   )
-  return { ...a, ...b, v: 1, templates, showPrompts: newer(a.showPrompts, b.showPrompts) }
+  return {
+    ...a,
+    ...b,
+    v: 1,
+    templates,
+    showPrompts: newer(a.showPrompts, b.showPrompts),
+    lastBackup: newer(a.lastBackup, b.lastBackup),
+  }
 }
 
 export function liveTemplates(s: Settings): Template[] {
@@ -148,4 +170,9 @@ export function deleteTemplate(s: Settings, id: string, now = new Date()): Setti
 
 export function setShowPrompts(s: Settings, value: boolean, now = new Date()): Settings {
   return { ...s, showPrompts: { value, updatedAt: now.toISOString() } }
+}
+
+export function setLastBackup(s: Settings, now = new Date()): Settings {
+  const iso = now.toISOString()
+  return { ...s, lastBackup: { value: iso, updatedAt: iso } }
 }

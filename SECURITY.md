@@ -80,7 +80,19 @@ copy is kept in IndexedDB, encrypted with the master key in the vault's own cont
 (`kind: "cache"`). It never leaves the device and is deleted with "Remove vault from this
 device". Search terms are never sent anywhere.
 
-## Origins: GitHub Pages and Firebase
+## Reminders and export
+
+- "On this day", the writing nudge and the backup reminder are worked out on the device from
+  the unlocked diary. The nudge time is a per-device preference (localStorage). The date of the
+  last encrypted backup is stored encrypted in `settings.vds` so every device knows it. Nothing
+  is sent anywhere and no notifications are used.
+- **Export writes plaintext.** Markdown export (.zip) and the PDF print view decrypt entries and
+  attachments for the chosen dates. The app warns first and asks again for the passphrase or a
+  passkey (the master key is unwrapped as a check and wiped at once); a confirmation allows one
+  export within 5 minutes and is dropped on lock. The decrypted files are handed to the browser
+  as a download or to the print dialog. Where they end up (Downloads, iCloud Drive, a printer)
+  is outside the app's control: delete them when done. The print view's decrypted photos are
+  `blob:` URLs, revoked when it closes or the diary locks.
 
 The browser isolates storage, service workers, installed apps and passkeys **per origin**
 (scheme + host + port):

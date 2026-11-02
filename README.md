@@ -9,6 +9,8 @@ A private, end-to-end encrypted diary that runs entirely in your browser and sto
   thumbnails on the timeline.
 - On-device search with filters, tags, writing streaks, a year heatmap and mood stats.
 - Entry templates (synced, encrypted), daily writing prompts, automatic titles.
+- "On this day", an optional evening writing nudge, a monthly backup reminder, and export to
+  Markdown (.zip) or PDF (print view).
 - Timeline, month calendar, conflict-safe sync between devices.
 - Unlock with a passphrase, a passkey (Face ID, Touch ID, Apple or Google passkeys) or, if you
   forget the passphrase, with 24 recovery words.

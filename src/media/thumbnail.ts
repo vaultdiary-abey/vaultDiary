@@ -10,14 +10,20 @@ export function thumbnailable(mime: string, name: string): 'image' | 'video' | n
   return kind === 'image' || kind === 'video' ? kind : null
 }
 
-function fit(w: number, h: number): [number, number] {
-  const scale = Math.min(1, THUMB_MAX / Math.max(w, h))
+export function fit(w: number, h: number, max = THUMB_MAX): [number, number] {
+  const scale = Math.min(1, max / Math.max(w, h))
   return [Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale))]
 }
 
-async function toJpeg(source: CanvasImageSource, w: number, h: number): Promise<Blob | null> {
+async function toJpeg(
+  source: CanvasImageSource,
+  w: number,
+  h: number,
+  max = THUMB_MAX,
+  quality = 0.8,
+): Promise<Blob | null> {
   if (!w || !h) return null
-  const [tw, th] = fit(w, h)
+  const [tw, th] = fit(w, h, max)
   const canvas = document.createElement('canvas')
   canvas.width = tw
   canvas.height = th
@@ -25,18 +31,27 @@ async function toJpeg(source: CanvasImageSource, w: number, h: number): Promise<
   if (!g) return null
   g.imageSmoothingQuality = 'high'
   g.drawImage(source, 0, 0, tw, th)
-  const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.8))
+  const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', quality))
   canvas.width = 0
   return blob
 }
 
-async function imageThumb(blob: Blob): Promise<Blob | null> {
+/**
+ * Decodes a photo and re-encodes it as a JPEG whose longest side is at most `max` px. Returns
+ * null when this browser can't decode it (e.g. HEIC outside Apple devices).
+ */
+export async function scaleImageToJpeg(
+  blob: Blob,
+  max: number,
+  quality: number,
+): Promise<Blob | null> {
+  if (typeof document === 'undefined') return null
   // createImageBitmap applies the photo's EXIF rotation; <img> is the fallback (Safari decodes
   // HEIC there).
   try {
     const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' })
     try {
-      return await toJpeg(bitmap, bitmap.width, bitmap.height)
+      return await toJpeg(bitmap, bitmap.width, bitmap.height, max, quality)
     } finally {
       bitmap.close()
     }
@@ -48,12 +63,16 @@ async function imageThumb(blob: Blob): Promise<Blob | null> {
     const img = new Image()
     img.src = url
     await img.decode()
-    return await toJpeg(img, img.naturalWidth, img.naturalHeight)
+    return await toJpeg(img, img.naturalWidth, img.naturalHeight, max, quality)
   } catch {
     return null
   } finally {
     URL.revokeObjectURL(url)
   }
+}
+
+function imageThumb(blob: Blob): Promise<Blob | null> {
+  return scaleImageToJpeg(blob, THUMB_MAX, 0.8)
 }
 
 function once(target: EventTarget, events: string[], ms: number): Promise<string> {

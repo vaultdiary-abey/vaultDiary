@@ -41,6 +41,14 @@ import {
   type VaultLocation,
 } from '../drive/vaultFolder'
 import { ZipWriter } from '../lib/zip'
+import { setLastBackup } from '../model/settings'
+import {
+  buildMarkdownExport,
+  entriesInRange,
+  exportFolderName,
+  type DateRange,
+  type MarkdownExportResult,
+} from './exporter'
 import { LARGE_FILE } from '../media/kind'
 import { RecordingStore, type RecordingMeta } from '../media/recordingStore'
 import { ThumbnailJob } from '../media/thumbJob'
@@ -137,6 +145,12 @@ export class Controller extends Emitter {
   private syncTimer: ReturnType<typeof setInterval> | null = null
   private changeTimer: ReturnType<typeof setTimeout> | null = null
   private flushers = new Set<() => Promise<void>>()
+  /** Until when a plaintext export is allowed (set by confirmForExport, cleared on lock). */
+  private exportGrantUntil = 0
+  /** This device had completed a sync before this visit (so its settings.vds copy is real). */
+  private syncedBefore = false
+  /** The date range shown in the print view (PDF export), or null. */
+  printRange: DateRange | null = null
   private unsubscribers: (() => void)[] = []
 
   constructor() {
@@ -397,54 +411,64 @@ export class Controller extends Emitter {
    * failure leaves the passphrase as the way in, with a clear message.
    */
   async unlockWithPasskey(): Promise<boolean> {
-    const vault = this.vault
-    const slots = this.passkeysHere()
-    if (!vault || !slots.length) return false
+    if (!this.vault || !this.passkeysHere().length) return false
     this.set({ busy: true, error: null })
     let raw: Uint8Array | null = null
     try {
-      let result
-      try {
-        result = await evaluatePrf(
-          location.hostname,
-          slots.map((w) => ({
-            credentialId: fromBase64Url(w.credentialId),
-            prfSalt: fromBase64Url(w.prfSalt),
-          })),
-        )
-      } catch (e) {
-        throw new Error(`${webauthnErrorMessage(e)} Unlock with your passphrase instead.`, {
-          cause: e,
-        })
-      }
-      const wrapper = wrapperForCredential(vault, result.credentialId)
-      if (!wrapper) {
-        throw new Error('That passkey is not set up for this diary. Use your passphrase.')
-      }
-      if (!result.prfOutput) {
-        throw new Error(
-          "This passkey didn't return its unlock secret (this can happen when it is used from " +
-            'another device via a QR code). Use your passphrase, or a passkey on this device.',
-        )
-      }
-      try {
-        raw = await unwrapWithPasskey(vault, wrapper, result.prfOutput)
-      } finally {
-        wipe(result.prfOutput)
-      }
+      raw = await this.passkeyUnwrap()
       await this.openSession(await importMasterKey(raw))
       return true
     } catch (e) {
-      this.set({
-        error:
-          e instanceof WrongSecretError
-            ? 'This passkey could not unlock the diary. Use your passphrase.'
-            : (e as Error).message,
-      })
+      this.set({ error: (e as Error).message })
       return false
     } finally {
       wipe(raw)
       this.set({ busy: false })
+    }
+  }
+
+  /**
+   * Asks a passkey (Face ID, Touch ID, …) for its PRF secret and unwraps the raw master key
+   * with it. Must run straight from a tap. The caller wipes the result. Errors carry a message
+   * that points to the passphrase.
+   */
+  private async passkeyUnwrap(): Promise<Uint8Array> {
+    const vault = this.vault
+    const slots = this.passkeysHere()
+    if (!vault || !slots.length) throw new Error('No passkey is set up on this device.')
+    let result
+    try {
+      result = await evaluatePrf(
+        location.hostname,
+        slots.map((w) => ({
+          credentialId: fromBase64Url(w.credentialId),
+          prfSalt: fromBase64Url(w.prfSalt),
+        })),
+      )
+    } catch (e) {
+      throw new Error(`${webauthnErrorMessage(e)} Use your passphrase instead.`, { cause: e })
+    }
+    const wrapper = wrapperForCredential(vault, result.credentialId)
+    if (!wrapper) {
+      throw new Error('That passkey is not set up for this diary. Use your passphrase.')
+    }
+    if (!result.prfOutput) {
+      throw new Error(
+        "This passkey didn't return its unlock secret (this can happen when it is used from " +
+          'another device via a QR code). Use your passphrase, or a passkey on this device.',
+      )
+    }
+    try {
+      return await unwrapWithPasskey(vault, wrapper, result.prfOutput)
+    } catch (e) {
+      if (e instanceof WrongSecretError) {
+        throw new Error('This passkey could not unlock the diary. Use your passphrase.', {
+          cause: e,
+        })
+      }
+      throw e
+    } finally {
+      wipe(result.prfOutput)
     }
   }
 
@@ -660,6 +684,7 @@ export class Controller extends Emitter {
       if (document.visibilityState === 'visible') void sync.sync()
     }, SYNC_INTERVAL)
     this.pendingRecordings = await this.recordings.list().catch(() => [])
+    this.syncedBefore = (await this.db.getKv<number>(KV.lastSyncedAt)) != null
     this.set({ phase: 'unlocked', error: null })
     await sync.refreshPending()
     void sync.sync()
@@ -694,6 +719,8 @@ export class Controller extends Emitter {
     this.thumbJob?.stop()
     this.thumbJob = null
     this.dropThumbnails()
+    this.exportGrantUntil = 0
+    this.printRange = null
     await this.dropSearch()
     if (this.syncTimer) clearInterval(this.syncTimer)
     if (this.changeTimer) clearTimeout(this.changeTimer)
@@ -861,7 +888,115 @@ export class Controller extends Emitter {
       done++
     }
     onProgress(done, items.length)
-    return zip.finish()
+    const blob = zip.finish()
+    await this.noteBackupMade()
+    return blob
+  }
+
+  /** Remembers (encrypted, in settings.vds, synced) that a backup was just made. */
+  private async noteBackupMade() {
+    const session = this.session
+    if (!session || session.locked) return
+    try {
+      await session.saveSettings(setLastBackup(session.settings))
+    } catch {
+      // only affects the reminder
+    }
+  }
+
+  // ---------------------------------------------------------------- plaintext export
+
+  /** How long a confirmation allows exports (the user picks a range and taps Export). */
+  static readonly EXPORT_GRANT_MS = 5 * 60_000
+
+  /**
+   * Exported files are not encrypted, so exporting asks again for the passphrase or a passkey.
+   * Either way the master key is unwrapped (and wiped at once): only the right secret passes.
+   */
+  async confirmForExport(secret: { passphrase: string } | { passkey: true }): Promise<void> {
+    if (!this.vault || !this.session) throw new Error('The vault is locked.')
+    let raw: Uint8Array | null = null
+    try {
+      if ('passphrase' in secret) {
+        try {
+          raw = await unwrapWithPassphrase(this.vault, secret.passphrase)
+        } catch (e) {
+          if (e instanceof WrongSecretError) throw new Error('Wrong passphrase.', { cause: e })
+          throw e
+        }
+      } else {
+        raw = await this.passkeyUnwrap()
+      }
+      this.exportGrantUntil = Date.now() + Controller.EXPORT_GRANT_MS
+      this.emit()
+    } finally {
+      wipe(raw)
+    }
+  }
+
+  /**
+   * Whether synced settings (e.g. the date of a backup made on another device) can be trusted:
+   * this device has synced before, or has synced on this visit.
+   */
+  get settingsSettled(): boolean {
+    return this.syncedBefore || this.sync?.status.lastSyncedAt != null
+  }
+
+  get exportAllowed(): boolean {
+    return !!this.session && Date.now() < this.exportGrantUntil
+  }
+
+  private requireExportGrant() {
+    if (!this.exportAllowed) {
+      throw new Error('Confirm with your passphrase or passkey before exporting.')
+    }
+  }
+
+  /** Entries in a range (oldest first) and how many are still downloading. */
+  exportEntries(range: DateRange) {
+    return entriesInRange(this.session?.list() ?? [], range)
+  }
+
+  async exportMarkdown(
+    range: DateRange,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<MarkdownExportResult & { name: string }> {
+    this.requireExportGrant()
+    const { entries, pending } = this.exportEntries(range)
+    if (pending) {
+      throw new Error(
+        `${pending} entries in this range are still downloading. Export once they're all here.`,
+      )
+    }
+    if (!entries.length) throw new Error('There are no entries in this date range.')
+    const result = await buildMarkdownExport(
+      entries,
+      range,
+      (a) => this.attachmentBlob(a),
+      onProgress,
+    )
+    this.exportGrantUntil = 0
+    this.emit()
+    return { ...result, name: `${exportFolderName(range)}.zip` }
+  }
+
+  /** Opens the print view for "Save as PDF". */
+  openPrintView(range: DateRange) {
+    this.requireExportGrant()
+    const { pending } = this.exportEntries(range)
+    if (pending) {
+      throw new Error(
+        `${pending} entries in this range are still downloading. Export once they're all here.`,
+      )
+    }
+    this.exportGrantUntil = 0
+    this.printRange = range
+    this.emit()
+  }
+
+  closePrintView() {
+    this.printRange = null
+    this.emit()
   }
 
   async storageReport(): Promise<StorageReport> {

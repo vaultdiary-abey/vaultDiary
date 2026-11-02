@@ -6,6 +6,7 @@ import { useController } from '../controllerContext'
 import { EntryCard } from '../EntryCard'
 import { itemData } from '../itemData'
 import { href } from '../router'
+import { BackupReminder, OnThisDay, WritingNudge } from '../Reminders'
 
 export function DayView({ date }: { date: string | null }) {
   const c = useController()
@@ -38,6 +39,8 @@ export function DayView({ date }: { date: string | null }) {
           ›
         </a>
       </div>
+      {isToday && <WritingNudge hasEntryToday={items.length > 0} />}
+      {isToday && <BackupReminder />}
       {!isToday && (
         <p className="center">
           <a href={href({ name: 'day', date: null })}>Back to today</a>
@@ -78,6 +81,7 @@ export function DayView({ date }: { date: string | null }) {
           <EntryCard key={itemData(item).id} item={item} />
         ))}
       </div>
+      {isToday && <OnThisDay />}
       {!c.readOnly && templates.length > 0 && (
         <div className="template-picker">
           <span className="muted small">Start from a template:</span>
