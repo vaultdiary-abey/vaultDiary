@@ -214,6 +214,31 @@ Use a real device for each row. "Add" = Settings → Passkeys → **Add passkey*
 - [ ] Each export asks for the passphrase / passkey again. Locking while the print view is open
       closes it.
 
+## V. Streaming playback (Phase 3, milestone B)
+
+Use a long video (several minutes; ideally one over 1 GB from the laptop) attached to an entry
+and fully uploaded (Settings → Sync shows nothing waiting).
+
+- [ ] **Diagnostics**: Settings → "Test video streaming on this device". Locked or unlocked,
+      pick a video from the device → "Streaming works"; **Middle** and **Last 5 s** report
+      "ok". Unlocked, pick one of the diary's videos from the list → the same. Do this in
+      iPhone Safari, the installed iPhone app and laptop Chrome; screenshot the Report.
+- [ ] **Player**: open the video attachment. It starts within a few seconds, with no "decrypts
+      all of it into memory" warning even above 200 MB. Drag to the middle: it plays within a
+      few seconds. Drag to the last seconds: it plays to the end.
+- [ ] Audio: a long voice note streams the same way.
+- [ ] **Sign-in expiry**: leave the player paused for over an hour (or until the badge says "Not
+      connected"), then seek to a part not played yet: "Google sign-in has expired. Playback is
+      paused." → **Continue** → it plays on from there.
+- [ ] **Close / lock**: close the player; it stops. Play again and let the diary auto-lock (or
+      press Lock): playback stops and the unlock screen shows.
+- [ ] **Offline**: with airplane mode on, a video not played before can't stream and shows an
+      error; a video still waiting to upload plays (from the local encrypted copy).
+- [ ] **Fallback**: in a private window opened for the first time (no service worker yet), a
+      video still plays (decrypted whole, with the size warning above 200 MB).
+- [ ] DevTools (laptop) → Network: Drive requests for the video have a `Range` header and
+      return 206; no request downloads the whole `.vdf`.
+
 ## U. App updates
 
 - [ ] With the app open (also the home-screen app), deploy a new version. Within an hour, or

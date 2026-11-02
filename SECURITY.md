@@ -51,6 +51,19 @@ What this does and doesn't rely on:
 - Viewers decrypt an attachment on the device into memory (a Blob) and show it from a `blob:`
   URL that is revoked when the viewer closes. Files over 200 MB ask first. SVG is never
   rendered inline (it can carry scripts).
+- **Streaming playback** (audio and video, Phase 3): the player loads a same-origin URL
+  `stream/<random token>/<name>` that the app's service worker answers. The service worker has
+  no keys. For each byte range the player asks for, it asks the page over a `MessageChannel`;
+  the page downloads only the needed chunks from Drive with HTTP Range requests (or reads the
+  local encrypted copy), checks and decrypts them with the file key (the same AES-GCM tag and
+  AAD checks as a full decryption: index and last-chunk flag), and hands back the plaintext
+  bytes. A chunk that fails its check is never played. The page keeps at most 4 decrypted
+  chunks (16 MiB) plus one fetched ahead, in memory only; closing the player or locking drops
+  them and makes the stream URL answer 404. The service worker holds plaintext only for the
+  piece in flight and sends `Cache-Control: no-store`; nothing is put in a cache. Tokens are
+  128 random bits and only work while their page has them open. When streaming isn't
+  available (no service worker yet, or a browser that bypasses it for media), the viewer falls
+  back to full decryption.
 - PDFs are drawn by pdf.js, bundled with the app. Its worker, fonts, cmaps and wasm decoders
   are served from the app's own origin; pdf.js 6 contains no `eval`/`new Function`, so the CSP
   still has no `'unsafe-eval'`.

@@ -87,52 +87,54 @@ assert(/0 errors/.test(await report()), 'no read errors')
 await page.screenshot({ path: `${SHOTS}/b1-stream-test.png`, fullPage: true })
 
 console.log('Set up a vault with a video attachment')
-await page.goto(URL)
-await page.getByRole('button', { name: 'Sign in with Google' }).click()
-await page.getByRole('button', { name: 'Start' }).click()
-await page.getByLabel('Passphrase', { exact: true }).fill(PASS)
-await page.getByLabel('Repeat passphrase').fill(PASS)
-await page.getByRole('button', { name: 'Continue' }).click()
-await page.locator('.word-grid li').first().waitFor()
-const words = (await page.locator('.word-grid li').allInnerTexts()).map((t) => t.split(/\s+/).pop())
-await page.getByLabel('I have written down').check()
-await page.getByRole('button', { name: 'Continue' }).click()
-const labels = await page.locator('label[for^="cw"]').allInnerTexts()
-for (const [i, label] of labels.entries()) {
-  await page.locator(`#cw${i}`).fill(words[Number(label.replace(/\D/g, '')) - 1])
-}
-await page.getByRole('button', { name: 'Create vault' }).click()
-await page.getByRole('heading', { name: 'Today' }).waitFor()
-await page.getByRole('link', { name: '+ New entry' }).click()
-await page.getByLabel('Title').fill('Holiday video')
-await page.locator('input[type=file][multiple]').setInputFiles({
-  name: 'holiday.webm',
-  mimeType: 'video/webm',
-  buffer: videoBytes,
-})
-await page.locator('.attachments li', { hasText: 'holiday.webm' }).waitFor()
-await page.waitForTimeout(1200)
-await page.getByRole('button', { name: 'Done' }).click()
-await page.getByRole('link', { name: 'Settings' }).click()
-await page.locator('.badge', { hasText: 'Synced' }).waitFor({ timeout: 120000 })
-const queued = () =>
-  page.evaluate(
-    () =>
-      new Promise((resolve) => {
-        const r = indexedDB.open('vaultdiary')
-        r.onsuccess = () => {
-          const q = r.result.transaction('uploads').objectStore('uploads').count()
-          q.onsuccess = () => {
-            r.result.close()
-            resolve(q.result)
+async function setupVault(p, name, bytes) {
+  await p.goto(URL)
+  await p.getByRole('button', { name: 'Sign in with Google' }).click()
+  await p.getByRole('button', { name: 'Start' }).click()
+  await p.getByLabel('Passphrase', { exact: true }).fill(PASS)
+  await p.getByLabel('Repeat passphrase').fill(PASS)
+  await p.getByRole('button', { name: 'Continue' }).click()
+  await p.locator('.word-grid li').first().waitFor()
+  const words = (await p.locator('.word-grid li').allInnerTexts()).map((t) => t.split(/\s+/).pop())
+  await p.getByLabel('I have written down').check()
+  await p.getByRole('button', { name: 'Continue' }).click()
+  const labels = await p.locator('label[for^="cw"]').allInnerTexts()
+  for (const [i, label] of labels.entries()) {
+    await p.locator(`#cw${i}`).fill(words[Number(label.replace(/\D/g, '')) - 1])
+  }
+  await p.getByRole('button', { name: 'Create vault' }).click()
+  await p.getByRole('heading', { name: 'Today' }).waitFor()
+  await p.getByRole('link', { name: '+ New entry' }).click()
+  await p.getByLabel('Title').fill('Holiday video')
+  await p.locator('input[type=file][multiple]').setInputFiles({
+    name,
+    mimeType: 'video/webm',
+    buffer: bytes,
+  })
+  await p.locator('.attachments li', { hasText: name }).waitFor()
+  await p.waitForTimeout(1200)
+  await p.getByRole('button', { name: 'Done' }).click()
+  await p.getByRole('heading', { name: 'Holiday video' }).waitFor()
+  const queued = () =>
+    p.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const r = indexedDB.open('vaultdiary')
+          r.onsuccess = () => {
+            const q = r.result.transaction('uploads').objectStore('uploads').count()
+            q.onsuccess = () => {
+              r.result.close()
+              resolve(q.result)
+            }
           }
-        }
-      }),
-  )
-for (let i = 0; (await queued()) > 0; i++) {
-  if (i > 180) throw new Error('uploads did not finish')
-  await page.waitForTimeout(1000)
+        }),
+    )
+  for (let i = 0; (await queued()) > 0; i++) {
+    if (i > 180) throw new Error('uploads did not finish')
+    await p.waitForTimeout(1000)
+  }
 }
+await setupVault(page, 'holiday.webm', videoBytes)
 assert(true, 'video uploaded to (fake) Drive: no local copy left')
 
 console.log('Stream test page, unlocked (attachment streamed from Drive)')
@@ -163,6 +165,95 @@ assert(
   drive.bytes < drive.size,
   `only part of the file was fetched (${(drive.bytes / 1e6).toFixed(1)} of ${(drive.size / 1e6).toFixed(1)} MB)`,
 )
+
+console.log('The attachment viewer streams the video')
+await page.evaluate(() => {
+  window.__fakeDrive.downloads.length = 0
+  window.__fakeDrive.ranges.length = 0
+})
+await page.goto(`${URL}#/timeline`)
+await page.locator('.entry-card', { hasText: 'Holiday video' }).click()
+await page.getByRole('button', { name: 'Open holiday.webm' }).click()
+const viewer = page.getByRole('dialog', { name: 'holiday.webm' })
+await viewer.locator('[data-streaming=yes] video').waitFor()
+const vid = viewer.locator('video')
+await page.waitForFunction(() => document.querySelector('.viewer video')?.readyState >= 1)
+const src = await vid.getAttribute('src')
+assert(/\/stream\/[0-9a-f]{32}\/holiday\.webm$/.test(src), 'plays from a same-origin stream URL')
+assert(!(await viewer.getByText(/decrypts all of it into memory/).count()), 'no size warning')
+await vid.evaluate((v) => v.play())
+await page.waitForFunction(() => document.querySelector('.viewer video').currentTime > 1)
+assert(true, 'playback starts')
+const fullDownloads = () =>
+  page.evaluate(() => {
+    const d = window.__fakeDrive
+    const big = [...d.files.values()].sort((a, b) => b.data.length - a.data.length)[0]
+    return d.downloads.filter((id) => id === big.id).length
+  })
+assert((await fullDownloads()) === 0, 'without downloading the whole file')
+
+console.log('Google sign-in expires while playing')
+await page.evaluate(() => (window.__fakeDrive.authExpired = true))
+await vid.evaluate((v) => {
+  v.currentTime = 75
+  return v.play().catch(() => {})
+})
+await viewer.locator('.viewer-signin').waitFor({ timeout: 30000 })
+assert(await vid.evaluate((v) => v.paused), 'playback pauses and Continue is offered')
+await page.evaluate(() => (window.__fakeDrive.authExpired = false))
+await viewer.locator('.viewer-signin').getByRole('button', { name: 'Continue' }).click()
+await viewer.locator('.viewer-signin').waitFor({ state: 'detached' })
+await page.waitForFunction(() => document.querySelector('.viewer video').currentTime > 76, null, {
+  timeout: 30000,
+})
+assert(true, 'after Continue it plays on from where it was')
+
+console.log('Seek to the final seconds')
+await vid.evaluate((v) => {
+  v.currentTime = v.duration - 3
+  return v.play().catch(() => {})
+})
+await page.waitForFunction(() => document.querySelector('.viewer video').ended, null, {
+  timeout: 30000,
+})
+assert(true, 'plays to the end')
+assert((await fullDownloads()) === 0, 'still never downloaded whole')
+
+const streamStatus = (url) => page.evaluate((u) => fetch(u).then((r) => r.status), url)
+assert((await streamStatus(src)) === 206 || (await streamStatus(src)) === 200, 'stream open')
+await viewer.getByRole('button', { name: 'Close' }).click()
+assert((await streamStatus(src)) === 404, 'closing the player ends the stream')
+
+console.log('Locking ends a stream')
+await page.getByRole('button', { name: 'Open holiday.webm' }).click()
+await viewer.locator('[data-streaming=yes] video').waitFor()
+const src2 = await viewer.locator('video').getAttribute('src')
+// The viewer covers the top bar; lock the way auto-lock would, with the player still open.
+await page.getByRole('button', { name: 'Lock now' }).dispatchEvent('click')
+await page.getByLabel('Passphrase').waitFor()
+assert((await streamStatus(src2)) === 404, 'locking ends the stream')
+
+console.log('Without a service worker: the full-decrypt player')
+const noSw = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  serviceWorkers: 'block',
+})
+const page2 = await noSw.newPage()
+page2.on('pageerror', (e) => errors.push(e.message))
+page2.on('dialog', (d) => d.accept())
+const clip = join(mkdtempSync(join(tmpdir(), 'vd-clip-')), 'clip.webm')
+execFileSync('ffmpeg', [
+  ...['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=25'],
+  ...['-t', '5', '-c:v', 'libvpx', clip],
+])
+await setupVault(page2, 'clip.webm', readFileSync(clip))
+await page2.getByRole('button', { name: 'Open clip.webm' }).click()
+const v2el = page2.getByRole('dialog', { name: 'clip.webm' }).locator('video')
+await v2el.waitFor()
+assert((await v2el.getAttribute('src')).startsWith('blob:'), 'falls back to decrypting in memory')
+await page2.waitForFunction(() => document.querySelector('.viewer video')?.readyState >= 1)
+assert(true, 'and plays')
+await noSw.close()
 
 assert(errors.length === 0, `no page errors (${errors.join(' | ')})`)
 await browser.close()
