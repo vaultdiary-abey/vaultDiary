@@ -6,7 +6,8 @@ A private, end-to-end encrypted diary that runs entirely in your browser and sto
 - Phone-first installable web app (PWA), works offline, light and dark themes.
 - Entries in Markdown, any number per day, autosave, mood, attachments of any type and size.
 - Photo, audio, video and PDF viewers (large videos stream: only the part being played is
-  downloaded and decrypted); record voice notes, videos and photos in the app;
+  downloaded and decrypted); iPhone (HEIC) photos get a JPEG viewing copy so every browser
+  can show them; record voice notes, videos and photos in the app;
   thumbnails on the timeline.
 - On-device search with filters, tags, writing streaks, a year heatmap and mood stats.
 - Entry templates (synced, encrypted), daily writing prompts, automatic titles.

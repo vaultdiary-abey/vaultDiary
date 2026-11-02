@@ -184,3 +184,26 @@ Decisions for B:
 - Diagnostics page `#/stream-test` (Settings → "Test video streaming on this device"), kept
   after the prototype step: locked it plays a file from the device, unlocked an attachment
   from Drive, and reports whether requests went through the service worker.
+
+Decisions for C:
+
+- HEIC = `image/heic|heif` (and `-sequence`) or a `.heic/.heif` name. "Can decode" is checked
+  once per page load with a 467-byte HEIC image bundled in the app (createImageBitmap, then
+  `<img>`), so viewers decide without downloading the photo.
+- Viewing copy on attach when the browser can decode HEIC; stored like a thumbnail but not
+  cached on the device (it can be several MB). HEIC thumbnails are made from the viewing copy
+  when there is one, so Chrome gets thumbnails too.
+- Viewer: original on browsers that decode HEIC; otherwise the viewing copy (with a note that
+  Download saves the original); otherwise the thumbnail and Download. If the viewing copy can't
+  be loaded (e.g. Google sign-in needed after reopening the app), it says why and offers Try
+  again.
+- "Make viewing copies for older photos": batches of 10, newest first, then waits until at most
+  3 files are waiting to upload; Stop/resume any time; a photo that fails twice is skipped.
+  Signs in to Google first if needed. Only offered on browsers that can decode HEIC.
+- Videos: the codec is read from the MP4/MOV sample description (`hvc1/hev1` HEVC, `avc1`
+  H.264, …), then `canPlayType` is asked about that codec (asking about `video/quicktime`
+  gives false "no"s in Chrome). If the browser says no, or the player fails, a plain message
+  and Download. No transcoding.
+- Recovery: viewing copies exported as `<id8 of original>-<name without extension>-view.jpg`,
+  linked in the entry's Markdown; both tools and the fixture cover it. The app's Markdown
+  export includes them too; the PDF print view uses them on browsers that can't decode HEIC.

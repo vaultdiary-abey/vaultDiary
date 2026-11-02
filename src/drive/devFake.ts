@@ -15,9 +15,13 @@ export async function createDevFakeDrive(auth: Auth): Promise<FakeDrive> {
   const drive = new FakeDrive()
   for (const f of await table.toArray()) drive.files.set(f.id, f)
   let timer: ReturnType<typeof setTimeout> | null = null
+  // Saved at most 200 ms after the first unsaved change (a debounce could be postponed for
+  // ever by a steady stream of changes, and a reload would then lose them).
   drive.onChange = () => {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => void table.bulkPut([...drive.files.values()]), 200)
+    timer ??= setTimeout(() => {
+      timer = null
+      void table.bulkPut([...drive.files.values()])
+    }, 200)
   }
   // Mirror the fake auth state and the browser's offline toggle (DevTools → Network → Offline).
   const check = (drive as unknown as { check: () => void }).check.bind(drive)
