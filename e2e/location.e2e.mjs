@@ -173,7 +173,7 @@ await page.screenshot({ path: `${SHOTS}/loc-04-places.png` })
 await homeRow.click()
 await page.locator('.entry-card', { hasText: 'Second at home' }).waitFor()
 assert(
-  (await page.locator('.entry-list .entry-card').count()) === 2,
+  (await page.locator('section[aria-live] .entry-card').count()) === 2,
   'tapping it shows those entries',
 )
 
