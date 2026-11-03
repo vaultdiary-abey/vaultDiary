@@ -5,7 +5,9 @@ export type Route =
   | { name: 'entry'; id: string; edit: boolean }
   | { name: 'new'; date: string | null; template?: string | null; prompt?: number | null }
   | { name: 'templates'; edit: string | null }
-  | { name: 'timeline'; tag: string | null }
+  | { name: 'timeline'; tag: string | null; place?: string | null }
+  /** Places entries were written at, with counts (Timeline → Places). */
+  | { name: 'places' }
   | { name: 'insights'; year: number | null }
   | { name: 'calendar'; month: string | null }
   | { name: 'settings' }
@@ -35,16 +37,20 @@ export function parseRoute(hash: string): Route {
     case 'templates':
       return { name: 'templates', edit: a === 'new' || (a && /^[0-9a-f]{32}$/.test(a)) ? a : null }
     case 'timeline': {
-      let tag: string | null = null
-      if (a === 'tag' && b) {
+      let value: string | null = null
+      if ((a === 'tag' || a === 'place') && b) {
         try {
-          tag = decodeURIComponent(b)
+          value = decodeURIComponent(b)
         } catch {
-          tag = null
+          value = null
         }
       }
-      return { name: 'timeline', tag }
+      return a === 'place'
+        ? { name: 'timeline', tag: null, place: value }
+        : { name: 'timeline', tag: a === 'tag' ? value : null }
     }
+    case 'places':
+      return { name: 'places' }
     case 'insights':
       return { name: 'insights', year: a && /^\d{4}$/.test(a) ? Number(a) : null }
     case 'calendar':
@@ -73,7 +79,10 @@ export function href(route: Route): string {
     case 'templates':
       return route.edit ? `#/templates/${route.edit}` : '#/templates'
     case 'timeline':
+      if (route.place) return `#/timeline/place/${encodeURIComponent(route.place)}`
       return route.tag ? `#/timeline/tag/${encodeURIComponent(route.tag)}` : '#/timeline'
+    case 'places':
+      return '#/places'
     case 'insights':
       return route.year ? `#/insights/${route.year}` : '#/insights'
     case 'calendar':

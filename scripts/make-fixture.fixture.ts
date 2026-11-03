@@ -112,6 +112,7 @@ it('writes the sample vault fixture', async () => {
     size: files[i].data.length,
   })
 
+  const homeId = randomId()
   const entries: Entry[] = [
     {
       id: randomId(),
@@ -172,6 +173,53 @@ it('writes the sample vault fixture', async () => {
       mood: 5,
       attachments: [{ ...att(6), thumbFileId: thumbs[2].fileId, viewCopyFileId: viewCopy.fileId }],
     },
+    // Phase 4: an entry with an automatic location, matched to a saved place.
+    {
+      id: randomId(),
+      date: '2026-03-10',
+      createdAt: '2026-03-10T01:15:00.000Z',
+      updatedAt: '2026-03-10T01:20:00.000Z',
+      title: 'Morning at home',
+      body: 'Written with a location.',
+      tags: [],
+      mood: 4,
+      attachments: [],
+      location: {
+        lat: 1.438012,
+        lon: 103.788741,
+        accuracy: 35,
+        label: 'Home',
+        placeId: homeId,
+        city: 'Woodlands',
+        region: '',
+        country: 'Singapore',
+        source: 'saved-place',
+        capturedAt: '2026-03-10T01:15:04.000Z',
+      },
+    },
+    // Phase 4: a location that is only a typed name (no coordinates).
+    {
+      id: randomId(),
+      date: '2026-03-11',
+      createdAt: '2026-03-11T12:00:00.000Z',
+      updatedAt: '2026-03-11T12:00:00.000Z',
+      title: 'Picnic',
+      body: '',
+      tags: [],
+      mood: null,
+      attachments: [],
+      location: {
+        lat: null,
+        lon: null,
+        accuracy: null,
+        label: 'Grandma\'s garden "by the lake"',
+        city: '',
+        region: '',
+        country: '',
+        source: 'manual',
+        capturedAt: '2026-03-11T12:01:00.000Z',
+      },
+    },
   ]
 
   const dir = join(ROOT, 'VaultDiary')
@@ -209,9 +257,25 @@ it('writes the sample vault fixture', async () => {
     },
     new Date('2026-03-01T09:00:00.000Z'),
   )
+  // Phase 4: a saved place and the location switch.
+  const withPlaces = {
+    ...settings,
+    addLocation: { value: true, updatedAt: '2026-03-09T08:00:00.000Z' },
+    places: [
+      {
+        id: homeId,
+        name: 'Home',
+        lat: 1.438,
+        lon: 103.7887,
+        radius: 150,
+        createdAt: '2026-03-09T08:00:00.000Z',
+        updatedAt: '2026-03-09T08:00:00.000Z',
+      },
+    ],
+  }
   write(
     join(dir, 'settings.vds'),
-    await encryptBytes(mk, randomId(), 'settings', utf8(JSON.stringify(settings))),
+    await encryptBytes(mk, randomId(), 'settings', utf8(JSON.stringify(withPlaces))),
   )
   const indexId = randomId()
   write(

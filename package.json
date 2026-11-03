@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:fake": "VITE_FAKE_DRIVE=true vite",
+    "plant-preview": "vite --open /plant-preview.html",
     "build": "tsc -b && vite build && node scripts/build-recovery.mjs --copy-to dist",
     "build:recovery": "node scripts/build-recovery.mjs",
     "build:e2e": "VITE_FAKE_DRIVE=true vite build --mode e2e --outDir dist-e2e",
@@ -19,7 +20,7 @@
     "test:watch": "vitest",
     "test:py": "python3 -m unittest discover -s recovery -p 'test_*.py' -v",
     "fixture": "vitest run --config vitest.fixture.config.ts",
-    "test:e2e": "node e2e/recovery.e2e.mjs && node e2e/app.e2e.mjs && node e2e/passkey.e2e.mjs && node e2e/media.e2e.mjs && node e2e/insights.e2e.mjs && node e2e/templates.e2e.mjs && node e2e/extras.e2e.mjs && node e2e/stream.e2e.mjs && node e2e/heic.e2e.mjs && node e2e/drill.e2e.mjs"
+    "test:e2e": "node e2e/recovery.e2e.mjs && node e2e/app.e2e.mjs && node e2e/passkey.e2e.mjs && node e2e/media.e2e.mjs && node e2e/insights.e2e.mjs && node e2e/templates.e2e.mjs && node e2e/extras.e2e.mjs && node e2e/stream.e2e.mjs && node e2e/heic.e2e.mjs && node e2e/drill.e2e.mjs && node e2e/location.e2e.mjs && node e2e/plant.e2e.mjs"
   },
   "dependencies": {
     "dexie": "^4.4.7",

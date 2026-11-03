@@ -85,6 +85,27 @@ Templates and the writing-prompt switch are stored in `settings.vds`, encrypted 
 (container kind `"settings"`), and synced through Drive. Writing prompts are built into the app;
 nothing is fetched.
 
+## Location (Phase 4)
+
+- A new entry for today asks the browser's Geolocation API for the position once (after a
+  one-sentence explanation the first time). Past dates and existing entries are never located
+  automatically. "Add location to new entries" (Settings → Location, synced) turns it off.
+- The position is turned into a name **on the device**: saved places first, then the nearest
+  city in a GeoNames city list (cities with 1,000+ people, CC BY 4.0) that ships with the app
+  (`src/location/cities.txt`, built by `scripts/build-cities.mjs`). It is fetched from the app's
+  own origin on first use and kept in a separate IndexedDB database (`vd-geo`). That file is
+  public data, the same for everyone, so it is not encrypted; fetching it reveals nothing about
+  where you are. There are no geocoding APIs, map tiles or IP lookups.
+- The location (coordinates, accuracy, label, city, region, country) is stored **only inside the
+  encrypted entry** (FORMAT.md §5.1) and, as a label, in the encrypted index and search cache.
+  It is never in a file name, container header or `vault.json`. Saved places (name and
+  coordinates) are in the encrypted `settings.vds`.
+- The only plaintext kept is in `localStorage` on the device: whether location was allowed,
+  declined or turned off by the browser (no coordinates).
+- Firebase sends `Permissions-Policy: geolocation=(self)`; other sites can't use it in a frame.
+- Exports are plaintext: the Markdown front matter and the PDF include the location unless
+  "Include locations" is unticked.
+
 ## Search
 
 Search runs on the device. The full-text index (MiniSearch, bundled) lives in memory while the
@@ -138,6 +159,7 @@ The browser isolates storage, service workers, installed apps and passkeys **per
 
 - Strict CSP (`csp.mjs`, also sent as a header by Firebase). The only third parties are Google
   sign-in and the Drive API. No analytics, fonts or CDNs; all libraries are bundled.
+- No geocoding or map services: place names come from the bundled city list (see Location).
 - WebAuthn calls are handled by the browser and the password manager; the app makes no network
   request for them.
 - `recovery.html` has a CSP that forbids all network access.

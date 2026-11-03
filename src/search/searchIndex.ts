@@ -4,11 +4,13 @@
 // every unlock.
 import MiniSearch from 'minisearch'
 import { excerptOf } from '../model/entry'
+import { locationLabel, parseLocation } from '../model/location'
 import type { Searchable } from './filter'
 import { normalizeTerm, plainText, tokenize } from './text'
 
-const FIELDS = ['title', 'body', 'tags', 'files'] as const
-export const INDEX_VERSION = 1
+const FIELDS = ['title', 'body', 'tags', 'files', 'place'] as const
+/** 2: locations (revision 4) are indexed too. */
+export const INDEX_VERSION = 2
 
 interface Doc {
   id: string
@@ -16,6 +18,7 @@ interface Doc {
   body: string
   tags: string
   files: string
+  place: string
 }
 
 function options() {
@@ -25,12 +28,18 @@ function options() {
     tokenize,
     processTerm: (t: string) => normalizeTerm(t) || null,
     searchOptions: {
-      boost: { title: 3, tags: 3, files: 2 },
+      boost: { title: 3, tags: 3, files: 2, place: 2 },
       prefix: true,
       fuzzy: (term: string) => (term.length >= 5 ? 0.2 : false),
       combineWith: 'AND' as const,
     },
   }
+}
+
+/** A location's label, city, region and country, as searchable text. */
+function placeText(raw: unknown): string {
+  const l = parseLocation(raw)
+  return l ? [locationLabel(l), l.city, l.region, l.country].join(' ') : ''
 }
 
 export function docFor(item: Searchable): Doc {
@@ -42,10 +51,18 @@ export function docFor(item: Searchable): Doc {
       body: plainText(e.body),
       tags: e.tags.join(' '),
       files: e.attachments.map((a) => a.name).join(' '),
+      place: placeText(e.location),
     }
   }
   const s = item.summary
-  return { id: s.id, title: s.title, body: excerptOf(s.excerpt), tags: s.tags.join(' '), files: '' }
+  return {
+    id: s.id,
+    title: s.title,
+    body: excerptOf(s.excerpt),
+    tags: s.tags.join(' '),
+    files: '',
+    place: s.location ? [s.location.label, s.location.city, s.location.country].join(' ') : '',
+  }
 }
 
 /** What an item's indexed version depends on (summaries are indexed until downloaded). */

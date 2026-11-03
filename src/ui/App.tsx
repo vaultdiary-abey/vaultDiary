@@ -9,6 +9,7 @@ import { Setup } from './screens/Setup'
 import { Insights } from './screens/Insights'
 import { Templates } from './screens/Templates'
 import { Timeline } from './screens/Timeline'
+import { PlacesView } from './screens/PlacesView'
 import { ResetPassphrase, Unlock } from './screens/Unlock'
 import { Finding, Unconfigured, Welcome } from './screens/Welcome'
 import { Spinner, UpdateBanner } from './components'
@@ -18,7 +19,7 @@ import { StreamTest } from './screens/StreamTest'
 function Unlocked() {
   const c = useController()
   const route = useRoute()
-  if (c.printRange) return <PrintView range={c.printRange} />
+  if (c.printRange) return <PrintView range={c.printRange} includeLocations={c.printLocations} />
   let page
   switch (route.name) {
     case 'day':
@@ -31,7 +32,16 @@ function Unlocked() {
       page = <NewEntry date={route.date} template={route.template} prompt={route.prompt} />
       break
     case 'timeline':
-      page = <Timeline key={route.tag ?? ''} tag={route.tag} />
+      page = (
+        <Timeline
+          key={`${route.tag ?? ''}|${route.place ?? ''}`}
+          tag={route.tag}
+          place={route.place ?? null}
+        />
+      )
+      break
+    case 'places':
+      page = <PlacesView />
       break
     case 'templates':
       page = <Templates edit={route.edit} />

@@ -19,12 +19,20 @@ import {
   DEFAULT_NUDGE_TIME,
   setTheme,
   type Theme,
+  getTimelinePlant,
+  setTimelinePlant,
+  getLocationState,
+  getLocationOffReason,
+  setLocationState,
 } from '../../core/prefs'
 import { passphraseProblem } from '../../crypto/vault'
 import { formatBytes } from '../../lib/download'
 import { Card, ErrorNote, PassphraseInput, Spinner } from '../components'
 import { useController } from '../controllerContext'
-import { liveTemplates, setShowPrompts } from '../../model/settings'
+import { liveTemplates, setAddLocation, setShowPrompts } from '../../model/settings'
+import { geolocationAvailable } from '../../location/locate'
+import { IPHONE_LOCATION_HELP } from '../Location'
+import { Places } from './Places'
 import { href } from '../router'
 import { Passkeys } from './Passkeys'
 import { ExportCard } from './Export'
@@ -39,6 +47,7 @@ function Preferences() {
   const [maxVideo, setMaxVideo] = useState(getMaxVideoMinutes)
   const [accent, setAccentState] = useState<Accent>(getAccent)
   const [dots, setDotsState] = useState(getDots)
+  const [plant, setPlantState] = useState(getTimelinePlant)
   const [nudge, setNudge] = useState(getNudgeTime)
   const [lastNudgeTime, setLastNudgeTime] = useState(nudge === 'off' ? DEFAULT_NUDGE_TIME : nudge)
   const changeNudge = (value: string) => {
@@ -116,6 +125,22 @@ function Preferences() {
           />{' '}
           Dotted background
         </label>
+      </div>
+      <div className="field">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={plant}
+            onChange={(e) => {
+              setPlantState(e.target.checked)
+              setTimelinePlant(e.target.checked)
+            }}
+          />{' '}
+          Timeline plant
+        </label>
+        <p className="hint">
+          A pothos that grows along the Timeline as you write. Decoration only; nothing is stored.
+        </p>
       </div>
       <div className="field">
         <label className="check">
@@ -361,6 +386,88 @@ function Writing() {
   )
 }
 
+const OFF_REASONS = {
+  denied: 'The browser was refused permission to use your location.',
+  timeout: "The last try couldn't find your location in time.",
+  unavailable: "This device couldn't provide a location.",
+  declined: 'You chose "Not now" when asked.',
+} as const
+
+function LocationSettings() {
+  const c = useController()
+  const session = c.session
+  const [state, setState] = useState(getLocationState)
+  const reason = getLocationOffReason()
+  if (!session || c.readOnly) return null
+  const on = session.settings.addLocation.value
+  return (
+    <Card>
+      <h2>Location</h2>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) =>
+            void session.saveSettings(setAddLocation(session.settings, e.target.checked))
+          }
+        />
+        Add location to new entries
+      </label>
+      <p className="hint">
+        Only new entries for today, once, when you start writing. Worked out on this device (no map
+        or lookup service) and stored only inside the encrypted entry. Syncs to your other devices.
+      </p>
+      {on && !geolocationAvailable() && (
+        <p className="note">This browser has no location support.</p>
+      )}
+      {on && state === 'off' && (
+        <div className="note note-warn" data-testid="location-off">
+          <p>
+            <strong>Location off</strong> on this device. {reason ? OFF_REASONS[reason] : ''}
+          </p>
+          <p className="small">{IPHONE_LOCATION_HELP}</p>
+          <button
+            className="ghost small"
+            onClick={() => {
+              setLocationState('unknown')
+              setState('unknown')
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function About() {
+  return (
+    <Card>
+      <h2>About</h2>
+      <p className="small">
+        Vault Diary · format VDV1 · no analytics, no trackers. Everything is encrypted on your
+        device before it reaches Google Drive.
+      </p>
+      <p className="small">
+        Place names come from{' '}
+        <a href="https://www.geonames.org/" target="_blank" rel="noreferrer noopener">
+          GeoNames
+        </a>{' '}
+        (cities with 1,000+ people), licensed under{' '}
+        <a
+          href="https://creativecommons.org/licenses/by/4.0/"
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          CC BY 4.0
+        </a>
+        . The list is part of the app and is searched on your device; nothing is looked up online.
+      </p>
+    </Card>
+  )
+}
+
 function SyncDetails() {
   const c = useController()
   const s = c.sync?.status
@@ -435,6 +542,8 @@ export function Settings() {
       <BackupReminder />
       <Preferences />
       <Writing />
+      <LocationSettings />
+      <Places />
       <SyncDetails />
       <Passkeys />
       {!c.readOnly && <ChangePassphrase />}
@@ -446,7 +555,7 @@ export function Settings() {
       <p className="muted small center">
         <a href={href({ name: 'streamtest' })}>Test video streaming on this device</a>
       </p>
-      <p className="muted small center">Vault Diary · format VDV1 · no analytics, no trackers</p>
+      <About />
     </div>
   )
 }

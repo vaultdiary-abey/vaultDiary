@@ -7,6 +7,7 @@ import {
   activeFilterCount,
   matchesFilters,
   NO_FILTERS,
+  placeCounts,
   type Filters,
   type Searchable,
 } from '../../search/filter'
@@ -14,6 +15,10 @@ import { plainText, snippet } from '../../search/text'
 import { useController } from '../controllerContext'
 import { EntryCard } from '../EntryCard'
 import { itemData } from '../itemData'
+import { href } from '../router'
+import { VineList, type VineItem } from '../plant/Vine'
+import { getTimelinePlant } from '../../core/prefs'
+import { plantSentence } from '../../plant/plan'
 
 const PAGE = 50
 
@@ -144,14 +149,15 @@ function FilterPanel({
   )
 }
 
-export function Timeline({ tag }: { tag: string | null }) {
+export function Timeline({ tag, place = null }: { tag: string | null; place?: string | null }) {
   const c = useController()
+  const linked = !!(tag || place)
   const [limit, setLimit] = useState(PAGE)
-  const [query, setQuery] = useState(tag ? '' : remembered.query)
+  const [query, setQuery] = useState(linked ? '' : remembered.query)
   const [filters, setFilters] = useState<Filters>(
-    tag ? { ...NO_FILTERS, tags: [tag] } : remembered.filters,
+    linked ? { ...NO_FILTERS, tags: tag ? [tag] : [], place } : remembered.filters,
   )
-  const [open, setOpen] = useState(tag ? false : remembered.open)
+  const [open, setOpen] = useState(linked ? false : remembered.open)
   useEffect(() => {
     remembered = { query, filters, open }
   }, [query, filters, open])
@@ -163,6 +169,10 @@ export function Timeline({ tag }: { tag: string | null }) {
   useEffect(() => {
     if (searching && !index) void c.ensureSearch().catch(() => {})
   }, [c, searching, index])
+
+  const placeLabel = filters.place
+    ? (placeCounts(all).find((p) => p.key === filters.place)?.label ?? filters.place)
+    : null
 
   const allTags = tagCounts(all.map((i) => (i.kind === 'entry' ? i.entry : i.summary))).map(
     (t) => t.tag,
@@ -188,6 +198,7 @@ export function Timeline({ tag }: { tag: string | null }) {
     else groups.push({ date, items: [item] })
   }
   const pendingCount = c.session?.summaries.size ?? 0
+  const [plant] = useState(getTimelinePlant)
   const nFilters = activeFilterCount(filters)
 
   return (
@@ -196,7 +207,7 @@ export function Timeline({ tag }: { tag: string | null }) {
       <div className="search-bar">
         <input
           type="search"
-          placeholder="Search titles, text, tags, file names"
+          placeholder="Search titles, text, tags, places, files"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search entries"
@@ -210,7 +221,26 @@ export function Timeline({ tag }: { tag: string | null }) {
           Filters{nFilters ? ` (${nFilters})` : ''}
         </button>
       </div>
+      <div className="timeline-links">
+        <a className="chip" href={href({ name: 'places' })}>
+          📍 Places
+        </a>
+        {placeLabel && (
+          <button
+            className="chip selected"
+            onClick={() => setFilters({ ...filters, place: null })}
+            aria-label={`Remove place filter ${placeLabel}`}
+          >
+            📍 {placeLabel} ✕
+          </button>
+        )}
+      </div>
       {open && <FilterPanel filters={filters} onChange={setFilters} allTags={allTags} />}
+      {plant && (
+        <p className="muted small plant-sentence" data-testid="plant-sentence">
+          {plantSentence(all.map((i) => itemData(i).date))}
+        </p>
+      )}
 
       {results ? (
         <section aria-live="polite">
@@ -223,19 +253,31 @@ export function Timeline({ tag }: { tag: string | null }) {
                 ` · ${pendingCount} still downloading (searched by title and summary only)`}
             </p>
           )}
-          <div className="entry-list">
-            {results.slice(0, limit).map(({ item, terms }) => {
+          {(() => {
+            const cards = results.slice(0, limit).map(({ item, terms }) => {
               const body = item.kind === 'entry' ? plainText(item.entry.body) : item.summary.excerpt
-              return (
-                <EntryCard
-                  key={itemData(item).id}
-                  item={item}
-                  showDate
-                  snippet={searching ? snippet(body, terms) : null}
-                />
-              )
-            })}
-          </div>
+              return {
+                id: itemData(item).id,
+                createdAt: itemData(item).createdAt,
+                content: (
+                  <EntryCard
+                    key={itemData(item).id}
+                    item={item}
+                    showDate
+                    snippet={searching ? snippet(body, terms) : null}
+                  />
+                ),
+              }
+            })
+            return plant ? (
+              <VineList
+                items={cards}
+                allIdsOldestFirst={results.map((r) => itemData(r.item).id).reverse()}
+              />
+            ) : (
+              <div className="entry-list">{cards.map((x) => x.content)}</div>
+            )
+          })()}
           {results.length > limit && (
             <button className="ghost" onClick={() => setLimit(limit + PAGE)}>
               Show more
@@ -245,16 +287,36 @@ export function Timeline({ tag }: { tag: string | null }) {
       ) : (
         <>
           {all.length === 0 && <p className="empty">No entries yet.</p>}
-          {groups.map((g) => (
-            <section key={g.date} className="timeline-day">
-              <h2 className="timeline-date">{formatDay(g.date)}</h2>
-              <div className="entry-list">
-                {g.items.map((item) => (
-                  <EntryCard key={itemData(item).id} item={item} />
-                ))}
-              </div>
-            </section>
-          ))}
+          {plant ? (
+            <VineList
+              items={shown.map((item, i): VineItem => {
+                const d = itemData(item)
+                const first = i === 0 || itemData(shown[i - 1]).date !== d.date
+                return {
+                  id: d.id,
+                  createdAt: d.createdAt,
+                  content: (
+                    <>
+                      {first && <h2 className="timeline-date">{formatDay(d.date)}</h2>}
+                      <EntryCard item={item} />
+                    </>
+                  ),
+                }
+              })}
+              allIdsOldestFirst={all.map((i) => itemData(i).id).reverse()}
+            />
+          ) : (
+            groups.map((g) => (
+              <section key={g.date} className="timeline-day">
+                <h2 className="timeline-date">{formatDay(g.date)}</h2>
+                <div className="entry-list">
+                  {g.items.map((item) => (
+                    <EntryCard key={itemData(item).id} item={item} />
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
           {all.length > limit && (
             <button className="ghost" onClick={() => setLimit(limit + PAGE)}>
               Show older entries

@@ -47,6 +47,7 @@ import { StreamHost, type OpenStream } from '../stream/host'
 import { PlainReader } from '../stream/plainReader'
 import { driveSource } from '../stream/sources'
 import { setLastBackup } from '../model/settings'
+import { forgetCities } from '../location/cities'
 import {
   buildMarkdownExport,
   entriesInRange,
@@ -70,7 +71,7 @@ import { UploadQueue } from '../sync/uploads'
 import { recordVaultOps } from '../sync/vaultOps'
 import { CLIENT_ID, FAKE_DRIVE, READ_ONLY } from './config'
 import { Emitter } from './emitter'
-import { getAutoLockMinutes } from './prefs'
+import { getAutoLockMinutes, setLocationState } from './prefs'
 import { VaultSession } from './session'
 
 export type Phase =
@@ -165,6 +166,8 @@ export class Controller extends Emitter {
   private signInWaiters: { resolve: () => void; reject: (e: Error) => void }[] = []
   /** The date range shown in the print view (PDF export), or null. */
   printRange: DateRange | null = null
+  /** Whether the open print view shows each entry's location. */
+  printLocations = true
   private unsubscribers: (() => void)[] = []
 
   constructor() {
@@ -1088,6 +1091,7 @@ export class Controller extends Emitter {
   async exportMarkdown(
     range: DateRange,
     onProgress?: (done: number, total: number) => void,
+    options: { includeLocations?: boolean } = {},
   ): Promise<MarkdownExportResult & { name: string }> {
     this.requireExportGrant()
     const { entries, pending } = this.exportEntries(range)
@@ -1102,6 +1106,7 @@ export class Controller extends Emitter {
       range,
       (a) => this.attachmentBlob(a),
       onProgress,
+      options,
     )
     this.exportGrantUntil = 0
     this.emit()
@@ -1109,7 +1114,7 @@ export class Controller extends Emitter {
   }
 
   /** Opens the print view for "Save as PDF". */
-  openPrintView(range: DateRange) {
+  openPrintView(range: DateRange, options: { includeLocations?: boolean } = {}) {
     this.requireExportGrant()
     const { pending } = this.exportEntries(range)
     if (pending) {
@@ -1119,6 +1124,7 @@ export class Controller extends Emitter {
     }
     this.exportGrantUntil = 0
     this.printRange = range
+    this.printLocations = options.includeLocations !== false
     this.emit()
   }
 
@@ -1163,6 +1169,8 @@ export class Controller extends Emitter {
     await this.lock()
     this.uploads.stop()
     await this.db.wipeAll()
+    await forgetCities()
+    setLocationState('unknown')
     this.auth.signOut()
     this.vault = null
     this.location = null

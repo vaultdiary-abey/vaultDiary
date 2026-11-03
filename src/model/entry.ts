@@ -1,5 +1,6 @@
 import { isId, randomId } from '../crypto/bytes'
 import { FormatError } from '../crypto/errors'
+import { locationLabel, parseLocation, type EntryLocation } from './location'
 
 export interface Attachment {
   fileId: string
@@ -32,6 +33,11 @@ export interface Entry {
   tags: string[]
   mood: Mood | null
   attachments: Attachment[]
+  /**
+   * Where it was written (FORMAT.md revision 4). Optional; absent = no location. Kept exactly
+   * as stored (so re-saving never rewrites it); read it through parseLocation().
+   */
+  location?: EntryLocation | Record<string, unknown>
 }
 
 export const MOODS: { value: Mood; emoji: string; label: string }[] = [
@@ -138,10 +144,23 @@ export interface EntrySummary {
   tags: string[]
   attachmentCount: number
   excerpt: string
+  /** The entry's place, for search and the Places view (revision 4, optional). */
+  location?: SummaryLocation
+}
+
+export interface SummaryLocation {
+  label: string
+  city: string
+  country: string
+}
+
+export function summaryLocation(l: unknown): SummaryLocation | undefined {
+  const p = parseLocation(l)
+  return p ? { label: locationLabel(p), city: p.city, country: p.country } : undefined
 }
 
 export function summarise(e: Entry): EntrySummary {
-  return {
+  const summary: EntrySummary = {
     id: e.id,
     date: e.date,
     createdAt: e.createdAt,
@@ -152,6 +171,8 @@ export function summarise(e: Entry): EntrySummary {
     attachmentCount: e.attachments.length,
     excerpt: excerptOf(e.body),
   }
+  const location = summaryLocation(e.location)
+  return location ? { ...summary, location } : summary
 }
 
 export interface IndexFile {
@@ -174,7 +195,18 @@ export function parseIndex(raw: unknown): IndexFile {
   return {
     v: 1,
     generatedAt: str(r.generatedAt),
-    entries: r.entries.filter((e) => isId(e?.id) && DATE_PATTERN.test(str(e?.date))),
+    entries: r.entries
+      .filter((e) => isId(e?.id) && DATE_PATTERN.test(str(e?.date)))
+      .map((e) => {
+        const l = e.location as unknown as Record<string, unknown> | undefined
+        if (l === undefined) return e
+        const label = l && typeof l === 'object' ? str(l.label).trim() : ''
+        const rest = { ...e }
+        delete rest.location
+        return label
+          ? { ...rest, location: { label, city: str(l!.city), country: str(l!.country) } }
+          : rest
+      }),
   }
 }
 

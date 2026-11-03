@@ -55,7 +55,7 @@ class RecoverTest(unittest.TestCase):
     def test_passphrase_folder(self):
         entries, files, problems = self.run_recover([VAULT_DIR])
         self.assertEqual(problems, [])
-        self.assertEqual(len(entries), 5)
+        self.assertEqual(len(entries), 7)
         # 7 attachments (with the unreferenced one) + 1 HEIC viewing copy; thumbnails are skipped
         self.assertEqual(len(files), 8)
         self.assert_matches_expected()

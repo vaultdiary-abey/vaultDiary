@@ -1861,6 +1861,7 @@ label.check {
     max-height: 18cm;
   }
   body.printing-export .print-date,
+  body.printing-export .print-place,
   body.printing-export .print-tags,
   body.printing-export .muted,
   body.printing-export figcaption {
@@ -2305,6 +2306,408 @@ h1 {
     animation-duration: 0.01ms !important;
     animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ================================================================ location (Phase 4) */
+
+.loc-line {
+  display: flex;
+  margin: -0.35rem 0 0;
+}
+
+.loc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0.2rem 0.65rem 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.loc-chip {
+  min-height: 32px;
+  cursor: pointer;
+}
+
+button.loc-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  color: var(--text);
+}
+
+.loc-chip-empty {
+  background: transparent;
+  border-style: dashed;
+}
+
+.loc-chip-busy {
+  border-style: dashed;
+  background: transparent;
+}
+
+.entry-card-place {
+  margin: 0.15rem 0 0.3rem;
+}
+
+.entry-card-place .loc-chip {
+  font-size: 0.75rem;
+  padding: 0.05rem 0.5rem 0.05rem 0.4rem;
+}
+
+.loc-ask p {
+  margin: 0 0 0.5rem;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(10, 10, 14, 0.35);
+  animation: vd-fade 0.18s var(--ease) backwards;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: min(88dvh, 760px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 18px 18px 0 0;
+  box-shadow: var(--shadow-lg);
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  outline: none;
+  animation: vd-rise 0.26s var(--ease) backwards;
+}
+
+@media (min-width: 640px) {
+  .sheet-backdrop {
+    align-items: center;
+  }
+  .sheet {
+    border-radius: 18px;
+  }
+}
+
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sheet-head h2 {
+  margin: 0;
+}
+
+.loc-current {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.5rem 0 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.loc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.loc-section:first-of-type {
+  border-top: none;
+}
+
+.loc-wide {
+  width: 100%;
+}
+
+.loc-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.loc-results li + li {
+  border-top: 1px solid var(--border);
+}
+
+.loc-results button {
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+}
+
+.timeline-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.timeline-links a.chip {
+  text-decoration: none;
+}
+
+.place-list,
+.place-counts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.place-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.place-row .row,
+.loc-ask .row {
+  margin-top: 0;
+  gap: 0.5rem;
+}
+
+.place-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.place-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.place-count {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.print-place {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* ================================================================ timeline plant (Phase 4)
+   A Silver Satin Pothos climbing the Timeline. Fixed plant colours (not the accent), with a
+   lifted palette for dark mode. Column: 40 px on phones, 56 px on wider screens; on wide
+   screens it sits in the margin so cards keep their full width. */
+
+.vine-list {
+  --plant-w: 40px;
+  --plant-pull: -10px;
+  --pothos-leaf: #2f4a3e;
+  --pothos-leaf-young: #7d9c66;
+  --pothos-silver: #c9d3cf;
+  --pothos-vein: rgba(206, 216, 211, 0.5);
+  --pothos-stem-young: #81996b;
+  --pothos-stem-old: #77704f;
+  --pothos-root: #8f7c63;
+  --pothos-pot: #b88569;
+  --pothos-pot-rim: #c4937a;
+  --pothos-soil: #5b4a3d;
+  --pothos-pot-shadow: rgba(70, 50, 35, 0.14);
+  margin-left: var(--plant-pull);
+}
+
+@media (min-width: 700px) {
+  .vine-list {
+    --plant-w: 56px;
+    --plant-pull: -16px;
+  }
+}
+
+@media (min-width: 900px) {
+  .vine-list {
+    --plant-pull: -56px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .vine-list {
+    --pothos-leaf: #47665a;
+    --pothos-leaf-young: #8fb07c;
+    --pothos-silver: #aebcb7;
+    --pothos-vein: rgba(190, 204, 198, 0.4);
+    --pothos-stem-young: #8ea67b;
+    --pothos-stem-old: #8c8566;
+    --pothos-root: #9a8a72;
+    --pothos-pot: #9c6f58;
+    --pothos-pot-rim: #a97c64;
+    --pothos-soil: #3b3029;
+    --pothos-pot-shadow: rgba(0, 0, 0, 0.35);
+  }
+}
+
+:root[data-theme='dark'] .vine-list {
+  --pothos-leaf: #47665a;
+  --pothos-leaf-young: #8fb07c;
+  --pothos-silver: #aebcb7;
+  --pothos-vein: rgba(190, 204, 198, 0.4);
+  --pothos-stem-young: #8ea67b;
+  --pothos-stem-old: #8c8566;
+  --pothos-root: #9a8a72;
+  --pothos-pot: #9c6f58;
+  --pothos-pot-rim: #a97c64;
+  --pothos-soil: #3b3029;
+  --pothos-pot-shadow: rgba(0, 0, 0, 0.35);
+}
+
+.vine-row {
+  display: grid;
+  grid-template-columns: var(--plant-w) minmax(0, 1fr);
+}
+
+/* No positioning or z-index per row: with 1,000+ rows that would mean thousands of paint
+   layers to hit-test on every scroll. The segment is an in-flow SVG 1 px tall that draws
+   outside its box; it is painted before the card that follows it, so leaves tuck under cards. */
+.vine-cell {
+  min-width: 0;
+}
+
+.vine-svg {
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.vine-content {
+  min-width: 0;
+  padding-bottom: 0.6rem;
+}
+
+.vine-content > .timeline-date {
+  margin-top: 0.6rem;
+}
+
+.vine-content > .entry-card {
+  animation: vd-rise 0.36s var(--ease) backwards;
+}
+
+.vine-pot-row .vine-cell {
+  min-height: calc(var(--plant-w) * 1.05 + 16px);
+}
+
+.vine-pot-row .vine-content {
+  display: flex;
+  align-items: center;
+}
+
+.plant-sentence {
+  margin: 0;
+}
+
+/* Motion: the vine draws in once per visit; a new entry's node, stem and leaf grow in once. */
+.vine-reveal .vine-stem,
+.vine-reveal .vine-twig,
+.vine-grow .vine-stem,
+.vine-grow .vine-twig {
+  stroke-dasharray: 1;
+  animation: vine-draw 0.5s var(--ease) both;
+}
+
+.vine-grow .vine-stem,
+.vine-grow .vine-twig {
+  animation-duration: 0.45s;
+}
+
+.vine-reveal .vine-leaf,
+.vine-reveal .vine-node,
+.vine-reveal .vine-root,
+.vine-reveal .vine-bud,
+.vine-grow .vine-node,
+.vine-grow .vine-root,
+.vine-grow .vine-bud {
+  animation: vine-fade 0.3s 0.25s var(--ease) both;
+}
+
+.vine-grow .vine-leaf-body {
+  transform-box: fill-box;
+  transform-origin: 0% 50%;
+  animation: vine-unfurl 0.6s var(--ease) both;
+}
+
+@keyframes vine-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes vine-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes vine-unfurl {
+  from {
+    opacity: 0;
+    transform: rotate(-24deg) scale(0.2, 0.08);
+  }
+  35% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vine-list *,
+  .vine-list *::before {
+    animation: none !important;
+  }
+}
+
+@media print {
+  .vine-list {
+    margin-left: 0;
+  }
+  .vine-row {
+    display: block;
+  }
+  .vine-cell,
+  .vine-pot-row,
+  .plant-sentence {
+    display: none !important;
   }
 }
 

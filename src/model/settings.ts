@@ -23,6 +23,24 @@ export interface Template {
   [field: string]: unknown
 }
 
+/** A named place (Home, Work…) that new entries near it are labelled with (revision 4). */
+export interface SavedPlace {
+  id: string
+  name: string
+  lat: number
+  lon: number
+  /** Entries within this many metres get the place's name. */
+  radius: number
+  createdAt: string
+  updatedAt: string
+  /** Tombstone: deleted on some device. */
+  deleted?: boolean
+  [field: string]: unknown
+}
+
+export const DEFAULT_PLACE_RADIUS = 150
+export const PLACE_RADIUS_CHOICES = [50, 100, 150, 250, 500, 1000] as const
+
 export interface TimedValue<T> {
   value: T
   updatedAt: string
@@ -37,6 +55,10 @@ export interface Settings {
    * value is an ISO time or null; merged like other settings, by updatedAt.
    */
   lastBackup: TimedValue<string | null>
+  /** Add the current location to new entries for today (revision 4, default on). */
+  addLocation: TimedValue<boolean>
+  /** Saved places (revision 4), merged by id like templates. */
+  places: SavedPlace[]
   [field: string]: unknown
 }
 
@@ -48,6 +70,8 @@ export function defaultSettings(): Settings {
     templates: [],
     showPrompts: { value: true, updatedAt: EPOCH },
     lastBackup: { value: null, updatedAt: EPOCH },
+    addLocation: { value: true, updatedAt: EPOCH },
+    places: [],
   }
 }
 
@@ -79,12 +103,40 @@ export function parseSettings(raw: unknown): Settings {
       updatedAt: str(t.updatedAt, EPOCH),
       ...(t.deleted === true ? { deleted: true } : {}),
     }))
+  const places = (Array.isArray(r.places) ? r.places : [])
+    .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object' && isId(p.id))
+    .map((p): SavedPlace | null => {
+      const lat = p.lat
+      const lon = p.lon
+      const deleted = p.deleted === true
+      const ok =
+        typeof lat === 'number' &&
+        typeof lon === 'number' &&
+        Math.abs(lat) <= 90 &&
+        Math.abs(lon) <= 180
+      if (!ok && !deleted) return null
+      const radius = typeof p.radius === 'number' && p.radius > 0 ? p.radius : DEFAULT_PLACE_RADIUS
+      return {
+        ...p,
+        id: p.id as string,
+        name: str(p.name, 'Place'),
+        lat: ok ? (lat as number) : 0,
+        lon: ok ? (lon as number) : 0,
+        radius,
+        createdAt: str(p.createdAt, EPOCH),
+        updatedAt: str(p.updatedAt, EPOCH),
+        ...(deleted ? { deleted: true } : {}),
+      }
+    })
+    .filter((p): p is SavedPlace => p !== null)
   return {
     ...r,
     v: 1,
     templates,
     showPrompts: timed(r.showPrompts, (v): v is boolean => typeof v === 'boolean', true),
     lastBackup: timed(r.lastBackup, isIsoOrNull, null),
+    addLocation: timed(r.addLocation, (v): v is boolean => typeof v === 'boolean', true),
+    places,
   }
 }
 
@@ -106,6 +158,14 @@ export function mergeSettings(a: Settings, b: Settings): Settings {
   const templates = [...byId.values()].sort(
     (x, y) => x.createdAt.localeCompare(y.createdAt) || x.id.localeCompare(y.id),
   )
+  const placesById = new Map<string, SavedPlace>()
+  for (const p of [...a.places, ...b.places]) {
+    const prev = placesById.get(p.id)
+    placesById.set(p.id, prev ? newer(prev, p) : p)
+  }
+  const places = [...placesById.values()].sort(
+    (x, y) => x.createdAt.localeCompare(y.createdAt) || x.id.localeCompare(y.id),
+  )
   return {
     ...a,
     ...b,
@@ -113,6 +173,8 @@ export function mergeSettings(a: Settings, b: Settings): Settings {
     templates,
     showPrompts: newer(a.showPrompts, b.showPrompts),
     lastBackup: newer(a.lastBackup, b.lastBackup),
+    addLocation: newer(a.addLocation, b.addLocation),
+    places,
   }
 }
 
@@ -175,4 +237,71 @@ export function setShowPrompts(s: Settings, value: boolean, now = new Date()): S
 export function setLastBackup(s: Settings, now = new Date()): Settings {
   const iso = now.toISOString()
   return { ...s, lastBackup: { value: iso, updatedAt: iso } }
+}
+
+export function setAddLocation(s: Settings, value: boolean, now = new Date()): Settings {
+  return { ...s, addLocation: { value, updatedAt: now.toISOString() } }
+}
+
+export function livePlaces(s: Settings): SavedPlace[] {
+  return s.places.filter((p) => !p.deleted)
+}
+
+/** Adds a place, or changes one (name, radius). Returns the new settings and the place. */
+export function savePlace(
+  s: Settings,
+  p: Pick<SavedPlace, 'name' | 'lat' | 'lon'> & { id?: string; radius?: number },
+  now = new Date(),
+): { settings: Settings; place: SavedPlace } {
+  const iso = now.toISOString()
+  const existing = p.id ? s.places.find((x) => x.id === p.id && !x.deleted) : undefined
+  const name = p.name.trim() || 'Place'
+  const place: SavedPlace = existing
+    ? {
+        ...existing,
+        name,
+        lat: p.lat,
+        lon: p.lon,
+        radius: p.radius ?? existing.radius,
+        updatedAt: iso,
+      }
+    : {
+        id: randomId(),
+        name,
+        lat: p.lat,
+        lon: p.lon,
+        radius: p.radius ?? DEFAULT_PLACE_RADIUS,
+        createdAt: iso,
+        updatedAt: iso,
+      }
+  return {
+    settings: {
+      ...s,
+      places: existing
+        ? s.places.map((x) => (x.id === place.id ? place : x))
+        : [...s.places, place],
+    },
+    place,
+  }
+}
+
+/** Deletes a saved place. Entries already labelled with it keep their label. */
+export function deletePlace(s: Settings, id: string, now = new Date()): Settings {
+  return {
+    ...s,
+    places: s.places.map((p) =>
+      p.id === id
+        ? {
+            id: p.id,
+            name: '',
+            lat: 0,
+            lon: 0,
+            radius: p.radius,
+            createdAt: p.createdAt,
+            updatedAt: now.toISOString(),
+            deleted: true,
+          }
+        : p,
+    ),
+  }
 }

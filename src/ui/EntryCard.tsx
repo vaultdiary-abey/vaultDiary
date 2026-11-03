@@ -5,6 +5,7 @@ import { itemData } from './itemData'
 import { formatTime } from '../lib/dates'
 import { href } from './router'
 import { Thumb } from './Thumb'
+import { LocationChip } from './Location'
 
 export function EntryCard({
   item,
@@ -58,6 +59,11 @@ export function EntryCard({
           {item.entry.attachments.length > 4 && (
             <span className="thumb thumb-more">+{item.entry.attachments.length - 4}</span>
           )}
+        </div>
+      )}
+      {d.place && (
+        <div className="entry-card-place">
+          <LocationChip location={{ label: d.place }} />
         </div>
       )}
       <div className="entry-card-meta">

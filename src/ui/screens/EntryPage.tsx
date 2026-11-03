@@ -22,6 +22,16 @@ import { tagCounts } from '../../model/tags'
 import { ErrorNote, ProgressBar } from '../components'
 import { useController } from '../controllerContext'
 import { href, navigate } from '../router'
+import { LocationChip, LocationSheet } from '../Location'
+import {
+  geolocationAvailable,
+  LocationError,
+  locateNow,
+  permissionState,
+} from '../../location/locate'
+import { getLocationState, setLocationState } from '../../core/prefs'
+import { livePlaces } from '../../model/settings'
+import type { EntryLocation } from '../../model/location'
 
 const AUTOSAVE_DELAY = 800
 
@@ -185,7 +195,18 @@ function AttachmentList(props: { attachments: Attachment[]; onRemove?: (a: Attac
 
 function EntryView({ entry }: { entry: Entry }) {
   const c = useController()
+  const [locOpen, setLocOpen] = useState(false)
   const mood = MOODS.find((m) => m.value === entry.mood)
+  /** Changing the place of a saved entry; its date stays as it is. */
+  const setLocation = async (location: EntryLocation | null) => {
+    const session = c.session
+    const stored = session?.entries.get(entry.id)
+    if (!session || !stored) return
+    const next: Entry = { ...stored, updatedAt: new Date().toISOString() }
+    if (location) next.location = location
+    else delete next.location
+    await session.save(next)
+  }
   const remove = async () => {
     if (!confirm('Delete this entry and its attachments? This cannot be undone in the app.')) return
     await c.session?.remove(entry.id)
@@ -203,6 +224,19 @@ function EntryView({ entry }: { entry: Entry }) {
           </span>
         )}
       </p>
+      <div className="loc-line">
+        <LocationChip
+          location={entry.location}
+          onEdit={c.readOnly ? undefined : () => setLocOpen(true)}
+        />
+      </div>
+      {locOpen && (
+        <LocationSheet
+          location={entry.location}
+          onChange={setLocation}
+          onClose={() => setLocOpen(false)}
+        />
+      )}
       <h1>{displayTitle(entry)}</h1>
       {entry.tags.length > 0 && (
         <div className="tag-line">
@@ -253,6 +287,10 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
   const baseRef = useRef(initial.updatedAt)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef<Promise<void>>(Promise.resolve())
+  const mountedRef = useRef(true)
+  const [locOpen, setLocOpen] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [askLocation, setAskLocation] = useState(false)
 
   const save = useCallback(async () => {
     if (timerRef.current) {
@@ -299,6 +337,79 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => void save(), AUTOSAVE_DELAY)
   }
+
+  /** Sets the location without touching the save state of an entry that is still blank. */
+  const setLocation = (location: EntryLocation | null) => {
+    const next = { ...draftRef.current }
+    if (location) next.location = location
+    else delete next.location
+    if (!savedOnceRef.current && isBlank(next)) {
+      draftRef.current = next
+      setDraft(next)
+      return
+    }
+    draftRef.current = next
+    dirtyRef.current = true
+    setDraft(next)
+    setState('pending')
+    void save()
+  }
+
+  // A new entry for today gets the current location once, in the background: writing and
+  // saving never wait for it. Past dates and existing entries are left alone.
+  const runAutoLocation = useCallback(async () => {
+    setLocating(true)
+    try {
+      const loc = await locateNow(livePlaces(session.settings))
+      setLocationState('asked')
+      const id = initial.id
+      if (mountedRef.current) {
+        const d = draftRef.current
+        if (!d.location && d.date === today()) setLocation(loc)
+        return
+      }
+      // The editor was closed before the position arrived: add it to the saved entry.
+      const stored = session.entries.get(id)
+      if (stored && !stored.location && stored.date === today() && !session.locked) {
+        await session.save({ ...stored, location: loc, updatedAt: new Date().toISOString() })
+      }
+    } catch (e) {
+      // Denied or timed out: leave it empty and don't ask again (Settings shows "Location off").
+      if (e instanceof LocationError) setLocationState('off', e.reason)
+    } finally {
+      if (mountedRef.current) setLocating(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, initial.id])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isDraft || initial.location || initial.date !== today()) return
+    if (!session.settings.addLocation.value || !geolocationAvailable()) return
+    const state = getLocationState()
+    if (state === 'off') return
+    let live = true
+    void (async () => {
+      if (state === 'asked') return void runAutoLocation()
+      // First time on this device: explain in one sentence before the browser asks.
+      const perm = await permissionState()
+      if (!live) return
+      if (perm === 'granted') void runAutoLocation()
+      else if (perm === 'denied') setLocationState('off', 'denied')
+      else setAskLocation(true)
+    })()
+    return () => {
+      live = false
+    }
+    // Only when the editor opens for a new entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // The background thumbnail job leaves this entry alone while it is being edited.
   useEffect(() => c.registerEditing(initial.id), [c, initial.id])
@@ -433,6 +544,45 @@ function Editor({ initial, isDraft }: { initial: Entry; isDraft: boolean }) {
           ))}
         </div>
       </div>
+      <div className="loc-line">
+        <LocationChip location={draft.location} busy={locating} onEdit={() => setLocOpen(true)} />
+      </div>
+      {askLocation && (
+        <div className="note loc-ask" role="status">
+          <p>
+            Vault Diary can note where you write each new entry; the place is stored only inside
+            your encrypted entry, never sent anywhere.
+          </p>
+          <div className="row">
+            <button
+              className="primary small"
+              onClick={() => {
+                setAskLocation(false)
+                setLocationState('asked')
+                void runAutoLocation()
+              }}
+            >
+              Add my location
+            </button>
+            <button
+              className="ghost small"
+              onClick={() => {
+                setAskLocation(false)
+                setLocationState('off', 'declined')
+              }}
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
+      {locOpen && (
+        <LocationSheet
+          location={draft.location}
+          onChange={(l) => setLocation(l)}
+          onClose={() => setLocOpen(false)}
+        />
+      )}
       <TagEditor tags={draft.tags} known={knownTags} onChange={(tags) => update({ tags })} />
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'write'} onClick={() => setTab('write')}>

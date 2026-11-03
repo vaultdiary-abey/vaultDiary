@@ -2,6 +2,7 @@
 // test checks both produce byte-identical files from the committed fixture.
 import { isId } from '../crypto/bytes'
 import { compareEntriesDesc, displayTitle, type Entry } from '../model/entry'
+import { locationFrontMatter } from '../model/location'
 
 export function slugify(title: string): string {
   const ascii = title
@@ -53,6 +54,8 @@ export function entryToMarkdown(e: Entry, available: (fileId: string) => boolean
     `updated: ${e.updatedAt}`,
     `mood: ${e.mood ?? 'null'}`,
     `tags: ${JSON.stringify(e.tags)}`,
+    // Revision 4: where it was written, when the entry has a location.
+    ...locationFrontMatter(e.location),
     '---',
     '',
     `# ${displayTitle(e)}`,

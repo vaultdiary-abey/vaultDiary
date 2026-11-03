@@ -262,6 +262,46 @@ and fully uploaded (Settings → Sync shows nothing waiting).
       recovery.html and with recover.py contains both files; the entry's `.md` links "Viewing
       copy (JPEG)".
 
+## L. Location (Phase 4, milestones A and B)
+
+- [ ] **iPhone Safari**, first new entry for today: one sentence explains why; **Add my
+      location** → the iOS prompt → **Allow**. Keep typing while it works: the chip under the
+      date changes from "Finding location…" to e.g. "📍 Woodlands, Singapore" (first time: a few
+      seconds while the place list loads).
+- [ ] **Installed app (Home Screen)**: the same, then a second entry: no explanation again.
+- [ ] **Past date**: Calendar → an earlier day → New entry: the chip says "Add location"; nothing
+      is captured. Editing an older entry never adds a location.
+- [ ] **Tap the chip**: Use current location / Search a city ("paris, fr") / Type a custom name
+      (with and without coordinates) / Remove location. The entry's date never changes.
+- [ ] **Saved places**: on an entry with coordinates, "Save this place" → "Home". The next new
+      entry at home is labelled "Home". Settings → Places: rename, change the distance, delete
+      (old entries keep "Home").
+- [ ] **Deny**: on a second device or after resetting Safari's website settings, choose **Don't
+      Allow**. The entry stays without a location and the app doesn't ask again. Settings →
+      Location shows "Location off" with the iPhone steps; after allowing it in iOS, **Try
+      again**.
+- [ ] **Search / Places**: search "Singapore" finds located entries. Timeline → 📍 Places lists
+      places with counts, newest first; tapping one shows its entries.
+- [ ] **Export**: Markdown front matter has `location:` (label, city, country, lat, lon); with
+      "Include locations" unticked there is none. The PDF shows the label under the date.
+- [ ] **Recovery**: re-download recovery.html and recover.py; both write the same `location:`
+      lines for a recovered entry.
+
+## T. Timeline plant (Phase 4, milestone C)
+
+- [ ] **iPhone**: Timeline shows one muted line ("Your pothos has been growing for N days · M
+      entries") and a slim vine on the left with a pot below the oldest entry (tap "Show older
+      entries" until the end). Cards are only slightly narrower; nothing covers text.
+- [ ] Write a new entry for today, go back to the Timeline: its node, stem and (maybe) leaf grow
+      in once. With iOS Settings → Accessibility → Motion → Reduce Motion on: no animation.
+- [ ] Search or filter (also 📍 Places): the vine joins only the shown entries; the line above
+      still counts all entries.
+- [ ] Light/dark, every colour, dotted background on and off: the plant looks the same.
+- [ ] Settings → This device → untick "Timeline plant": the Timeline looks exactly as before.
+- [ ] Print the Timeline page (Share → Print): no plant.
+- [ ] Laptop at full width: the plant sits in the margin; cards keep their width.
+- [ ] Scroll a long Timeline fast (Show older entries several times): smooth.
+
 ## U. App updates
 
 - [ ] With the app open (also the home-screen app), deploy a new version. Within an hour, or

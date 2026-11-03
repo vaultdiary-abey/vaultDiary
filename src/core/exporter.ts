@@ -59,6 +59,14 @@ export function exportFolderName(range: DateRange): string {
     : `VaultDiary-export-${range.from}-to-${range.to}`
 }
 
+/** An entry without any location data, for exports with "Include locations" turned off. */
+export function withoutLocation(e: Entry): Entry {
+  if (!('location' in e)) return e
+  const copy = { ...e }
+  delete copy.location
+  return copy
+}
+
 export interface MarkdownExportResult {
   zip: Blob
   problems: string[]
@@ -74,7 +82,9 @@ export async function buildMarkdownExport(
   range: DateRange,
   getFile: (attachment: Attachment) => Promise<Blob>,
   onProgress?: (done: number, total: number) => void,
+  options: { includeLocations?: boolean } = {},
 ): Promise<MarkdownExportResult> {
+  if (options.includeLocations === false) entries = entries.map(withoutLocation)
   if (attachmentBytes(entries) > MAX_EXPORT_BYTES) {
     throw new Error(
       'These entries have more than 4 GB of attachments, which is more than one export can ' +
