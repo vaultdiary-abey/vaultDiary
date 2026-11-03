@@ -16,6 +16,9 @@ import { useController } from '../controllerContext'
 import { EntryCard } from '../EntryCard'
 import { itemData } from '../itemData'
 import { href } from '../router'
+import { VineList, type VineItem } from '../plant/Vine'
+import { getTimelinePlant } from '../../core/prefs'
+import { plantSentence } from '../../plant/plan'
 
 const PAGE = 50
 
@@ -195,6 +198,7 @@ export function Timeline({ tag, place = null }: { tag: string | null; place?: st
     else groups.push({ date, items: [item] })
   }
   const pendingCount = c.session?.summaries.size ?? 0
+  const [plant] = useState(getTimelinePlant)
   const nFilters = activeFilterCount(filters)
 
   return (
@@ -232,6 +236,11 @@ export function Timeline({ tag, place = null }: { tag: string | null; place?: st
         )}
       </div>
       {open && <FilterPanel filters={filters} onChange={setFilters} allTags={allTags} />}
+      {plant && (
+        <p className="muted small plant-sentence" data-testid="plant-sentence">
+          {plantSentence(all.map((i) => itemData(i).date))}
+        </p>
+      )}
 
       {results ? (
         <section aria-live="polite">
@@ -244,19 +253,31 @@ export function Timeline({ tag, place = null }: { tag: string | null; place?: st
                 ` · ${pendingCount} still downloading (searched by title and summary only)`}
             </p>
           )}
-          <div className="entry-list">
-            {results.slice(0, limit).map(({ item, terms }) => {
+          {(() => {
+            const cards = results.slice(0, limit).map(({ item, terms }) => {
               const body = item.kind === 'entry' ? plainText(item.entry.body) : item.summary.excerpt
-              return (
-                <EntryCard
-                  key={itemData(item).id}
-                  item={item}
-                  showDate
-                  snippet={searching ? snippet(body, terms) : null}
-                />
-              )
-            })}
-          </div>
+              return {
+                id: itemData(item).id,
+                createdAt: itemData(item).createdAt,
+                content: (
+                  <EntryCard
+                    key={itemData(item).id}
+                    item={item}
+                    showDate
+                    snippet={searching ? snippet(body, terms) : null}
+                  />
+                ),
+              }
+            })
+            return plant ? (
+              <VineList
+                items={cards}
+                allIdsOldestFirst={results.map((r) => itemData(r.item).id).reverse()}
+              />
+            ) : (
+              <div className="entry-list">{cards.map((x) => x.content)}</div>
+            )
+          })()}
           {results.length > limit && (
             <button className="ghost" onClick={() => setLimit(limit + PAGE)}>
               Show more
@@ -266,16 +287,36 @@ export function Timeline({ tag, place = null }: { tag: string | null; place?: st
       ) : (
         <>
           {all.length === 0 && <p className="empty">No entries yet.</p>}
-          {groups.map((g) => (
-            <section key={g.date} className="timeline-day">
-              <h2 className="timeline-date">{formatDay(g.date)}</h2>
-              <div className="entry-list">
-                {g.items.map((item) => (
-                  <EntryCard key={itemData(item).id} item={item} />
-                ))}
-              </div>
-            </section>
-          ))}
+          {plant ? (
+            <VineList
+              items={shown.map((item, i): VineItem => {
+                const d = itemData(item)
+                const first = i === 0 || itemData(shown[i - 1]).date !== d.date
+                return {
+                  id: d.id,
+                  createdAt: d.createdAt,
+                  content: (
+                    <>
+                      {first && <h2 className="timeline-date">{formatDay(d.date)}</h2>}
+                      <EntryCard item={item} />
+                    </>
+                  ),
+                }
+              })}
+              allIdsOldestFirst={all.map((i) => itemData(i).id).reverse()}
+            />
+          ) : (
+            groups.map((g) => (
+              <section key={g.date} className="timeline-day">
+                <h2 className="timeline-date">{formatDay(g.date)}</h2>
+                <div className="entry-list">
+                  {g.items.map((item) => (
+                    <EntryCard key={itemData(item).id} item={item} />
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
           {all.length > limit && (
             <button className="ghost" onClick={() => setLimit(limit + PAGE)}>
               Show older entries

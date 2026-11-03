@@ -287,6 +287,21 @@ and fully uploaded (Settings → Sync shows nothing waiting).
 - [ ] **Recovery**: re-download recovery.html and recover.py; both write the same `location:`
       lines for a recovered entry.
 
+## T. Timeline plant (Phase 4, milestone C)
+
+- [ ] **iPhone**: Timeline shows one muted line ("Your pothos has been growing for N days · M
+      entries") and a slim vine on the left with a pot below the oldest entry (tap "Show older
+      entries" until the end). Cards are only slightly narrower; nothing covers text.
+- [ ] Write a new entry for today, go back to the Timeline: its node, stem and (maybe) leaf grow
+      in once. With iOS Settings → Accessibility → Motion → Reduce Motion on: no animation.
+- [ ] Search or filter (also 📍 Places): the vine joins only the shown entries; the line above
+      still counts all entries.
+- [ ] Light/dark, every colour, dotted background on and off: the plant looks the same.
+- [ ] Settings → This device → untick "Timeline plant": the Timeline looks exactly as before.
+- [ ] Print the Timeline page (Share → Print): no plant.
+- [ ] Laptop at full width: the plant sits in the margin; cards keep their width.
+- [ ] Scroll a long Timeline fast (Show older entries several times): smooth.
+
 ## U. App updates
 
 - [ ] With the app open (also the home-screen app), deploy a new version. Within an hour, or

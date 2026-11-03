@@ -61,6 +61,7 @@ npm run test:e2e      # Playwright, needs `npm run dev:fake` running and Playwri
 npm run build:e2e && npm run preview:e2e   # production build (real CSP, service worker) with
                                            # the fake Drive; then APP_URL=http://localhost:4174/ npm run test:e2e
 npm run fixture       # regenerate tests/fixtures/sample-vault (then commit it)
+npm run plant-preview # dev-only preview of the Timeline plant (not part of the build)
 npm run build:recovery  # rebuild recovery/recovery.html (CI fails if it's stale)
 ```
 

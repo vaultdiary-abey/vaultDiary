@@ -139,7 +139,7 @@ function Preferences() {
           Timeline plant
         </label>
         <p className="hint">
-          A pothos that grows along the Timeline as you write. Decoration only.
+          A pothos that grows along the Timeline as you write. Decoration only; nothing is stored.
         </p>
       </div>
       <div className="field">
