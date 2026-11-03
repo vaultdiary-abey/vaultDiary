@@ -61,14 +61,17 @@ async function write(date, title) {
 }
 await write('2026-04-01', 'Planting day')
 await page.getByRole('link', { name: 'Timeline' }).click()
-assert((await sentence.innerText()) === 'Your pothos was planted today · 1 entry', '1 entry')
+assert(
+  (await sentence.innerText()) === 'Your pothos was planted today and has grown 5 cm.',
+  '1 entry',
+)
 await write('2026-04-01', 'Same day again')
 await write('2026-10-31', 'Autumn')
 await write('2026-11-01', 'Rainy walk')
 await page.getByRole('link', { name: 'Timeline' }).click()
 await page.locator('.vine-row svg').first().waitFor()
 assert(
-  (await sentence.innerText()) === 'Your pothos has been growing for 215 days · 4 entries',
+  (await sentence.innerText()) === 'Your pothos has grown 20 cm in 215 days.',
   'many entries, two on one day',
 )
 assert(
@@ -124,7 +127,7 @@ assert(
   'the vine connects only the visible entries',
 )
 assert(
-  (await sentence.innerText()) === 'Your pothos has been growing for 215 days · 4 entries',
+  (await sentence.innerText()) === 'Your pothos has grown 20 cm in 215 days.',
   'the sentence still counts all entries',
 )
 await page.getByRole('searchbox', { name: 'Search entries' }).fill('')

@@ -56,8 +56,9 @@ export interface NodePlan {
 export const X_MIN = 0.36
 export const X_MAX = 0.66
 
-export const LEAF_CHANCE = 1 / 3
-const MAX_BARE = 3
+/** A few more than 1 in 3 nodes get a leaf (the rules below keep it from clumping). */
+export const LEAF_CHANCE = 0.4
+const MAX_BARE = 2
 const MAX_LEAVES = 2
 /** Leaves reach full size and silver this many nodes below the tip. */
 const MATURE_AT = 9
@@ -67,7 +68,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 /**
  * Plans the vine for entries ordered OLDEST FIRST (the pot end). The pass runs from the pot to
  * the tip, so adding a newer entry never changes anything below it except how mature each leaf
- * is. Rules: roughly 1 node in 3 has a leaf, never more than 3 bare nodes in a row, never more
+ * is. Rules: a little over 1 node in 3 has a leaf, never more than 2 bare nodes in a row, never more
  * than 2 leaves in a row, and leaves alternate sides.
  */
 export function planVine(idsOldestFirst: readonly string[]): NodePlan[] {
@@ -152,10 +153,22 @@ function dayNumber(date: string): number {
   return Math.round(Date.UTC(y, m - 1, d) / 86_400_000)
 }
 
+/** How much vine each entry adds, in centimetres. */
+export const CM_PER_ENTRY = 5
+
+/** "45 cm", "3.5 m", "1,250 m". */
+export function formatLength(cm: number): string {
+  if (cm < 100) return `${nf.format(Math.round(cm))} cm`
+  const m = cm / 100
+  if (m >= 100) return `${nf.format(Math.round(m))} m`
+  const one = Math.round(m * 10) / 10
+  return `${Number.isInteger(one) ? one : one.toFixed(1)} m`
+}
+
 /**
- * "Your pothos has been growing for 214 days · 132 entries". Days run from the first entry's
- * date to the latest entry's date, counting both. Always uses every entry, even when the
- * Timeline is filtered.
+ * "Your pothos has grown 3.5 m in 30 days." Each entry adds CM_PER_ENTRY of vine; days run from
+ * the first entry's date to the latest entry's date, counting both. Always uses every entry,
+ * even when the Timeline is filtered.
  */
 export function plantSentence(dates: readonly string[]): string {
   if (!dates.length) return 'Your pothos is waiting for its first entry.'
@@ -166,7 +179,7 @@ export function plantSentence(dates: readonly string[]): string {
     if (d > max) max = d
   }
   const days = dayNumber(max) - dayNumber(min) + 1
-  const entries = plural(dates.length, 'entry', 'entries')
-  if (days <= 1) return `Your pothos was planted today · ${entries}`
-  return `Your pothos has been growing for ${plural(days, 'day', 'days')} · ${entries}`
+  const length = formatLength(dates.length * CM_PER_ENTRY)
+  if (days <= 1) return `Your pothos was planted today and has grown ${length}.`
+  return `Your pothos has grown ${length} in ${plural(days, 'day', 'days')}.`
 }

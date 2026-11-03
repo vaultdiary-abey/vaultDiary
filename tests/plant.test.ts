@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { randomId } from '../src/crypto/bytes'
 import { leafShape, potShape, stemPaths } from '../src/plant/draw'
-import { hash32, planVine, plantSentence, rng, stemWidth } from '../src/plant/plan'
+import { formatLength, hash32, planVine, plantSentence, rng, stemWidth } from '../src/plant/plan'
 
 const ids = (n: number, seed = 1) => {
   const r = rng(seed)
@@ -51,7 +51,7 @@ describe('seeded plant', () => {
     }
   })
 
-  it('leaf rules: about 1 in 3, never 4 bare nodes or 3 leaves in a row, alternating sides', () => {
+  it('leaf rules: a little over 1 in 3, never 3 bare nodes or 3 leaves in a row, alternating sides', () => {
     let leaves = 0
     let total = 0
     for (let seed = 1; seed <= 40; seed++) {
@@ -71,12 +71,12 @@ describe('seeded plant', () => {
           bare++
           run = 0
         }
-        expect(bare).toBeLessThan(4)
+        expect(bare).toBeLessThan(3)
         expect(run).toBeLessThan(3)
       }
     }
-    expect(leaves / total).toBeGreaterThan(0.3)
-    expect(leaves / total).toBeLessThan(0.42)
+    expect(leaves / total).toBeGreaterThan(0.38)
+    expect(leaves / total).toBeLessThan(0.5)
   })
 
   it('the vine wanders inside its column; the stem tapers from pot to tip', () => {
@@ -112,25 +112,34 @@ describe('header sentence', () => {
   })
 
   it('1 entry, and several entries on one day', () => {
-    expect(plantSentence(['2026-11-03'])).toBe('Your pothos was planted today · 1 entry')
+    expect(plantSentence(['2026-11-03'])).toBe('Your pothos was planted today and has grown 5 cm.')
     expect(plantSentence(['2026-11-03', '2026-11-03', '2026-11-03'])).toBe(
-      'Your pothos was planted today · 3 entries',
+      'Your pothos was planted today and has grown 15 cm.',
     )
   })
 
-  it('many entries: days from first to latest, counting both, with thousands separators', () => {
+  it('many entries: length grown and days from first to latest (counting both)', () => {
     expect(plantSentence(['2026-11-03', '2026-11-02'])).toBe(
-      'Your pothos has been growing for 2 days · 2 entries',
+      'Your pothos has grown 10 cm in 2 days.',
     )
+    const month = Array.from(
+      { length: 70 },
+      (_, i) => `2026-10-${String(1 + (i % 30)).padStart(2, '0')}`,
+    )
+    expect(plantSentence(month)).toBe('Your pothos has grown 3.5 m in 30 days.')
     const dates = Array.from({ length: 1234 }, (_, i) =>
       new Date(Date.UTC(2023, 0, 1 + (i % 1500))).toISOString().slice(0, 10),
     )
     dates.push('2027-02-01')
-    // 2023-01-01 … 2027-02-01 is 1,493 days counting both ends.
-    expect(plantSentence(dates)).toBe('Your pothos has been growing for 1,493 days · 1,235 entries')
-    expect(plantSentence(['2026-01-01', '2026-08-02'])).toBe(
-      'Your pothos has been growing for 214 days · 2 entries',
-    )
+    // 1,235 entries × 5 cm = 61.75 m; 2023-01-01 … 2027-02-01 is 1,493 days counting both ends.
+    expect(plantSentence(dates)).toBe('Your pothos has grown 61.8 m in 1,493 days.')
+  })
+
+  it('formats lengths in cm under a metre, then metres', () => {
+    expect(formatLength(95)).toBe('95 cm')
+    expect(formatLength(100)).toBe('1 m')
+    expect(formatLength(355)).toBe('3.6 m')
+    expect(formatLength(125_000)).toBe('1,250 m')
   })
 
   it('does not depend on order (filters never change it: the Timeline passes all entries)', () => {
