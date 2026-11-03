@@ -1,4 +1,4 @@
-# Vault Diary file format, version 1 (revision 3)
+# Vault Diary file format, version 1 (revision 4)
 
 This document is the complete description of what Vault Diary stores. Anyone with this document,
 the files, and the passphrase or the 24 recovery words can decrypt everything without the app.
@@ -292,6 +292,51 @@ All payloads are UTF-8 JSON. All metadata lives inside the ciphertext.
   `files/<first 8 hex of the original's fileId>-<original name without its extension>-view.jpg`
   and the entry's Markdown links it under the attachment. A missing viewing copy is not an
   error.
+- `location` (revision 4, optional) is where the entry was written. Absent means no location.
+
+  ```json
+  "location": {
+    "lat": 1.438012,
+    "lon": 103.788741,
+    "accuracy": 35,
+    "label": "Woodlands, Singapore",
+    "placeId": "5e0b…32 hex…",
+    "city": "Woodlands",
+    "region": "",
+    "country": "Singapore",
+    "source": "auto",
+    "capturedAt": "2026-11-03T01:15:00.000Z"
+  }
+  ```
+
+  - `lat`, `lon`: WGS 84 degrees (the app rounds to 6 decimals), or both `null` for a location
+    that is only a typed name. A reader treats a pair outside ±90 / ±180, or with one of them
+    missing, as no coordinates.
+  - `accuracy`: radius in metres the position is accurate to, or `null`.
+  - `label`: the name shown, e.g. "Home", "Woodlands, Singapore" or any typed text.
+  - `placeId` (optional): id of the saved place (§5.5 `places`) it was matched to.
+  - `city`, `region`, `country`: from the app's offline GeoNames city list, or empty strings.
+  - `source`: `"auto"` (taken when a new entry was started), `"manual"` (typed), `"saved-place"`
+    (matched to or saved as a place) or `"city-search"` (picked from the city list). Readers
+    treat an unknown value as `"manual"`.
+  - `capturedAt`: ISO 8601 UTC time the position was taken or the location chosen.
+  - A location with neither a `label` nor coordinates is ignored (and kept unchanged).
+  - The location exists only inside the encrypted entry: never in file names, headers,
+    `vault.json` or anything else Drive can read.
+  - Recovery tools and the Markdown export add it to the entry's front matter after `tags`:
+
+    ```
+    location:
+      label: "Woodlands, Singapore"
+      city: "Woodlands"
+      country: "Singapore"
+      lat: 1.438012
+      lon: 103.788741
+    ```
+
+    Strings are JSON strings; numbers are written with at most 6 decimals, no exponent and no
+    trailing zeros (`k = floor(n × 10⁶ + 0.5)`, then `k / 10⁶` in plain decimal), or `null`.
+
 - Readers must keep fields they don't know, in the entry and in each attachment. A writer that
   re-saves an entry it read must write unknown fields back unchanged.
 
@@ -325,13 +370,16 @@ none.
       "mood": 4,
       "tags": [],
       "attachmentCount": 1,
-      "excerpt": "First 160 characters of the body as plain text…"
+      "excerpt": "First 160 characters of the body as plain text…",
+      "location": { "label": "Woodlands, Singapore", "city": "Woodlands", "country": "Singapore" }
     }
   ]
 }
 ```
 
-The index only speeds up the first load on a new device. It can always be rebuilt from the
+`location` (revision 4, optional) is the entry's location label, city and country, so search and
+the Places view work before the entry itself has downloaded. The index only speeds up the first
+load on a new device. It can always be rebuilt from the
 entries and may be stale or missing; recovery tools ignore it. Its container `id` is random.
 
 ### 5.4 Local-only containers (`kind: "cache"`, revision 2)
@@ -371,7 +419,19 @@ is random (a new one on every write, like the index). Payload:
     }
   ],
   "showPrompts": { "value": true, "updatedAt": "2026-11-02T09:00:00.000Z" },
-  "lastBackup": { "value": "2026-11-02T09:30:00.000Z", "updatedAt": "2026-11-02T09:30:00.000Z" }
+  "lastBackup": { "value": "2026-11-02T09:30:00.000Z", "updatedAt": "2026-11-02T09:30:00.000Z" },
+  "addLocation": { "value": true, "updatedAt": "2026-11-03T09:00:00.000Z" },
+  "places": [
+    {
+      "id": "5e0b…32 hex…",
+      "name": "Home",
+      "lat": 1.438012,
+      "lon": 103.788741,
+      "radius": 150,
+      "createdAt": "2026-11-03T09:00:00.000Z",
+      "updatedAt": "2026-11-03T09:00:00.000Z"
+    }
+  ]
 }
 ```
 
@@ -383,6 +443,12 @@ is random (a new one on every write, like the index). Payload:
 - `lastBackup` (revision 3, optional): when an encrypted backup zip (§6) was last made on any
   device, as an ISO 8601 UTC time, or `null`. Missing means never. The app uses it for its
   backup reminder only.
+- `addLocation` (revision 4, optional, default `true`): whether new entries for today get the
+  current location. Merged by `updatedAt`.
+- `places` (revision 4, optional): saved places. A new entry whose position is within `radius`
+  metres of one (and accurate to better than 150 m) is labelled with its `name`. Merged like
+  templates (by `id`, newest `updatedAt` wins, `deleted: true` tombstones). Deleting a place
+  doesn't change entries already labelled with it.
 - Recovery tools skip `settings.vds`: it holds no diary content. Readers written before revision
   2 report it as one "unknown file kind" problem and recover everything else normally.
 
@@ -421,3 +487,11 @@ recovery words.
     older ones export it as `…-unreferenced.bin` (nothing is lost either way).
   - No change to the container: audio and video are streamed by reading single chunks
     (§4.3, random access).
+- **Revision 4** (Phase 4):
+  - Optional entry field `location` (§5.1): coordinates, accuracy, label, city/region/country,
+    source and time, or just a typed name. Updated recovery tools and the Markdown export write
+    it into the front matter; older ones ignore it (the rest of the entry is recovered as before).
+  - Optional `location` (label, city, country) in index summaries (§5.3).
+  - Optional `addLocation` and `places` in `settings.vds` (§5.5). Recovery tools skip
+    `settings.vds` as before.
+  - No change to the container, headers or file names.

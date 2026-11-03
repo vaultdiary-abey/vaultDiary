@@ -25,6 +25,7 @@ import base64
 import getpass
 import hashlib
 import json
+import math
 import os
 import re
 import struct
@@ -582,6 +583,61 @@ def _num(n):
     return str(int(n)) if float(n).is_integer() else repr(n)
 
 
+LOCATION_SOURCES = ("auto", "manual", "saved-place", "city-search")
+
+
+def _finite(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    try:
+        v = float(v)
+    except OverflowError:
+        return None
+    return v if math.isfinite(v) else None
+
+
+def parse_location(raw):
+    """An entry's optional location (FORMAT.md revision 4), or None. Same rules as the app."""
+    if not isinstance(raw, dict):
+        return None
+    lat, lon = _finite(raw.get("lat")), _finite(raw.get("lon"))
+    if lat is None or lon is None or abs(lat) > 90 or abs(lon) > 180:
+        lat = lon = None
+
+    def s(v):
+        return js_trim(v) if isinstance(v, str) else ""
+
+    label = s(raw.get("label"))
+    if not label and lat is None:
+        return None
+    return {"label": label, "city": s(raw.get("city")), "country": s(raw.get("country")), "lat": lat, "lon": lon}
+
+
+def plain_number(n):
+    """At most 6 decimals, no exponent, no trailing zeros (matches the app's plainNumber)."""
+    k = math.floor(n * 1e6 + 0.5)
+    sign = "-" if k < 0 else ""
+    digits = str(abs(k)).zfill(7)
+    whole, frac = digits[:-6], digits[-6:].rstrip("0")
+    return f"{sign}{whole}.{frac}" if frac else f"{sign}{whole}"
+
+
+def location_front_matter(raw):
+    loc = parse_location(raw)
+    if loc is None:
+        return []
+    dumps = lambda v: json.dumps(v, ensure_ascii=False)  # noqa: E731
+    num = lambda v: "null" if v is None else plain_number(v)  # noqa: E731
+    return [
+        "location:",
+        f"  label: {dumps(loc['label'])}",
+        f"  city: {dumps(loc['city'])}",
+        f"  country: {dumps(loc['country'])}",
+        f"  lat: {num(loc['lat'])}",
+        f"  lon: {num(loc['lon'])}",
+    ]
+
+
 def entry_to_markdown(e, available):
     dumps = lambda v: json.dumps(v, ensure_ascii=False, separators=(",", ":"))  # noqa: E731
     lines = [
@@ -593,6 +649,7 @@ def entry_to_markdown(e, available):
         f"updated: {e['updatedAt']}",
         f"mood: {e['mood'] if e['mood'] is not None else 'null'}",
         f"tags: {dumps(e['tags'])}",
+        *location_front_matter(e.get("location")),
         "---",
         "",
         f"# {display_title(e)}",

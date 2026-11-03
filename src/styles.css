@@ -1861,6 +1861,7 @@ label.check {
     max-height: 18cm;
   }
   body.printing-export .print-date,
+  body.printing-export .print-place,
   body.printing-export .print-tags,
   body.printing-export .muted,
   body.printing-export figcaption {
@@ -2306,6 +2307,216 @@ h1 {
     animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ================================================================ location (Phase 4) */
+
+.loc-line {
+  display: flex;
+  margin: -0.35rem 0 0;
+}
+
+.loc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0.2rem 0.65rem 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.loc-chip {
+  min-height: 32px;
+  cursor: pointer;
+}
+
+button.loc-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  color: var(--text);
+}
+
+.loc-chip-empty {
+  background: transparent;
+  border-style: dashed;
+}
+
+.loc-chip-busy {
+  border-style: dashed;
+  background: transparent;
+}
+
+.entry-card-place {
+  margin: 0.15rem 0 0.3rem;
+}
+
+.entry-card-place .loc-chip {
+  font-size: 0.75rem;
+  padding: 0.05rem 0.5rem 0.05rem 0.4rem;
+}
+
+.loc-ask p {
+  margin: 0 0 0.5rem;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(10, 10, 14, 0.35);
+  animation: vd-fade 0.18s var(--ease) backwards;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: min(88dvh, 760px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 18px 18px 0 0;
+  box-shadow: var(--shadow-lg);
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  outline: none;
+  animation: vd-rise 0.26s var(--ease) backwards;
+}
+
+@media (min-width: 640px) {
+  .sheet-backdrop {
+    align-items: center;
+  }
+  .sheet {
+    border-radius: 18px;
+  }
+}
+
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sheet-head h2 {
+  margin: 0;
+}
+
+.loc-current {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.5rem 0 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.loc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.loc-section:first-of-type {
+  border-top: none;
+}
+
+.loc-wide {
+  width: 100%;
+}
+
+.loc-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.loc-results li + li {
+  border-top: 1px solid var(--border);
+}
+
+.loc-results button {
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+}
+
+.timeline-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.timeline-links a.chip {
+  text-decoration: none;
+}
+
+.place-list,
+.place-counts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.place-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.place-row .row,
+.loc-ask .row {
+  margin-top: 0;
+  gap: 0.5rem;
+}
+
+.place-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.place-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.place-count {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.print-place {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 /* ---- print: plain paper */

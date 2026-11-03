@@ -11,7 +11,7 @@ import { LARGE_FILE, mediaKind } from '../media/kind'
 import { scaleImageToJpeg } from '../media/thumbnail'
 import { canDecodeHeic, isHeic } from '../media/heic'
 import { isId } from '../crypto/bytes'
-import { displayTitle, MOODS, type Attachment, type Entry } from '../model/entry'
+import { displayTitle, MOODS, summaryLocation, type Attachment, type Entry } from '../model/entry'
 import { ProgressBar, Spinner } from './components'
 import { useController } from './controllerContext'
 
@@ -33,8 +33,17 @@ function AttachmentLine({ a, missing }: { a: Attachment; missing?: boolean }) {
   )
 }
 
-function PrintEntry({ entry, images }: { entry: Entry; images: Map<string, string> }) {
+function PrintEntry({
+  entry,
+  images,
+  includeLocation,
+}: {
+  entry: Entry
+  images: Map<string, string>
+  includeLocation: boolean
+}) {
   const mood = MOODS.find((m) => m.value === entry.mood)
+  const place = includeLocation ? summaryLocation(entry.location)?.label : undefined
   const photos = entry.attachments.filter((a) => images.has(a.fileId))
   const listed = entry.attachments.filter((a) => !images.has(a.fileId))
   return (
@@ -45,6 +54,7 @@ function PrintEntry({ entry, images }: { entry: Entry; images: Map<string, strin
           {entry.createdAt && ` · ${formatTime(entry.createdAt)}`}
           {mood && ` · ${mood.emoji} ${mood.label}`}
         </p>
+        {place && <p className="print-place">📍 {place}</p>}
         <h2>{displayTitle(entry)}</h2>
         {entry.tags.length > 0 && (
           <p className="print-tags">{entry.tags.map((t) => `#${t}`).join('  ')}</p>
@@ -74,7 +84,13 @@ function PrintEntry({ entry, images }: { entry: Entry; images: Map<string, strin
   )
 }
 
-export function PrintView({ range }: { range: DateRange }) {
+export function PrintView({
+  range,
+  includeLocations = true,
+}: {
+  range: DateRange
+  includeLocations?: boolean
+}) {
   const c = useController()
   const [entries] = useState(() => c.exportEntries(range).entries)
   const [images, setImages] = useState<Map<string, string> | null>(null)
@@ -167,7 +183,7 @@ export function PrintView({ range }: { range: DateRange }) {
             </p>
           </header>
           {entries.map((e) => (
-            <PrintEntry key={e.id} entry={e} images={images} />
+            <PrintEntry key={e.id} entry={e} images={images} includeLocation={includeLocations} />
           ))}
         </div>
       )}

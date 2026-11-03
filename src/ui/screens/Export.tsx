@@ -22,6 +22,7 @@ export function ExportCard() {
   const earliest = firstEntryDate(allDates)
   const [range, setRange] = useState<DateRange>(() => ({ from: earliest, to: today() }))
   const [format, setFormat] = useState<Format>('markdown')
+  const [includeLocations, setIncludeLocations] = useState(true)
   const [step, setStep] = useState<'choose' | 'confirm'>('choose')
   const [passphrase, setPassphrase] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -44,11 +45,13 @@ export function ExportCard() {
     setResult(null)
     try {
       if (format === 'pdf') {
-        c.openPrintView(range)
+        c.openPrintView(range, { includeLocations })
         return
       }
       setBusy('Decrypting attachments…')
-      const out = await c.exportMarkdown(range, (done, total) => setProgress({ done, total }))
+      const out = await c.exportMarkdown(range, (done, total) => setProgress({ done, total }), {
+        includeLocations,
+      })
       setBusy('Saving…')
       saveBlob(out.zip, out.name)
       setResult(
@@ -147,6 +150,17 @@ export function ExportCard() {
               PDF (print view)
             </label>
           </fieldset>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={includeLocations}
+              onChange={(e) => setIncludeLocations(e.target.checked)}
+            />{' '}
+            Include locations
+          </label>
+          {!includeLocations && (
+            <p className="hint">Place names and coordinates are left out of the export.</p>
+          )}
           <p className="small" data-testid="export-summary">
             {valid
               ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}` +

@@ -112,3 +112,35 @@ export function getNudgeDismissedOn(): string | null {
 export function setNudgeDismissedOn(day: string): void {
   write('vd.nudgeDismissedOn', day)
 }
+
+/**
+ * Location on this device: 'unknown' until the app has asked once; 'asked' after you agreed to
+ * the explanation; 'off' after the browser refused (permission denied) or timed out, so the app
+ * doesn't ask again until you choose "Try again" in Settings.
+ */
+export type LocationState = 'unknown' | 'asked' | 'off'
+export type LocationOffReason = 'denied' | 'timeout' | 'unavailable' | 'declined'
+
+export function getLocationState(): LocationState {
+  const v = read('vd.locationState')
+  return v === 'asked' || v === 'off' ? v : 'unknown'
+}
+
+export function getLocationOffReason(): LocationOffReason | null {
+  const v = read('vd.locationOffReason')
+  return v === 'denied' || v === 'timeout' || v === 'unavailable' || v === 'declined' ? v : null
+}
+
+export function setLocationState(state: LocationState, reason: LocationOffReason | null = null) {
+  write('vd.locationState', state)
+  write('vd.locationOffReason', reason ?? '')
+}
+
+/** The growing plant beside the Timeline (on unless turned off). */
+export function getTimelinePlant(): boolean {
+  return read('vd.timelinePlant') !== 'off'
+}
+
+export function setTimelinePlant(on: boolean): void {
+  write('vd.timelinePlant', on ? 'on' : 'off')
+}

@@ -7,3 +7,4 @@ recovery/recovery.html
 tests/fixtures
 src/crypto/bip39-english.txt
 src/recovery/recovery.template.html
+src/location/cities.txt
