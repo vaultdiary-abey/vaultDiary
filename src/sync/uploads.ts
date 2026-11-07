@@ -1,5 +1,7 @@
 // Upload queue for attachments. Items are encrypted Blobs in IndexedDB, so they survive closing
 // the app and going offline; uploads use Drive resumable sessions, one 8 MiB slice at a time.
+// The file is read from IndexedDB afresh for every slice and never held across a write to the
+// queue: Safari invalidates Blobs read from IndexedDB when their record is written again.
 import { Emitter } from '../core/emitter'
 import { AuthError, DriveError, OfflineError, UPLOAD_SLICE, type DriveClient } from '../drive/types'
 import type { VaultLocation } from '../drive/vaultFolder'
@@ -66,6 +68,9 @@ export class UploadQueue extends Emitter {
   stepTimeout = STEP_TIMEOUT
   sliceTimeoutPerMiB = SLICE_TIMEOUT_PER_MIB
   private lastProgressEmit = 0
+  /** Bumped by retryNow(), so an attempt failing meanwhile doesn't push the retry back. */
+  private retryGeneration = 0
+  private migrated = false
 
   constructor(
     db: VaultDB,
@@ -125,6 +130,7 @@ export class UploadQueue extends Emitter {
 
   /** "Sync now": retry everything waiting in backoff right away. */
   async retryNow(): Promise<void> {
+    this.retryGeneration++
     await this.db.uploads.toCollection().modify({ nextAttemptAt: 0 })
     await this.refresh()
     void this.kick()
@@ -141,6 +147,10 @@ export class UploadQueue extends Emitter {
   }
 
   private async drain(): Promise<void> {
+    if (!this.migrated) {
+      this.migrated = true
+      await this.db.migrateUploadBlobs().catch(() => 0)
+    }
     await this.refresh()
     for (;;) {
       const drive = this.getDrive()
@@ -182,6 +192,7 @@ export class UploadQueue extends Emitter {
   ): Promise<'next' | 'stop'> {
     const name = `${rec.fileId}.vdf`
     this.activeId = rec.fileId
+    const generation = this.retryGeneration
     try {
       let status: Awaited<ReturnType<DriveClient['queryResumable']>> | null = null
       if (rec.sessionUrl && this.now() - rec.sessionStartedAt < SESSION_MAX_AGE) {
@@ -211,23 +222,20 @@ export class UploadQueue extends Emitter {
         rec = await this.save(rec, { sessionUrl, sessionStartedAt: this.now(), uploaded: 0 })
         status = { done: false, nextOffset: 0 }
       }
+      let sliceDone = false
       while (!status.done) {
         const start: number = status.nextOffset
-        rec = await this.save(rec, { uploaded: start })
-        if (!(await this.db.uploads.get(rec.fileId))) return 'next' // cancelled
-        // Read the slice into memory first: Safari can fail or stall when a request body is a
-        // Blob that lives in IndexedDB.
-        let bytes: ArrayBuffer
-        try {
-          bytes = await rec.blob
-            .slice(start, Math.min(rec.size, start + UPLOAD_SLICE))
-            .arrayBuffer()
-        } catch (e) {
-          throw new Error(
-            `Could not read the encrypted file from this device's storage (${(e as Error).message}).`,
-            { cause: e },
-          )
-        }
+        // A slice went through: this is progress, so the next failure starts the backoff over.
+        rec = await this.save(
+          rec,
+          sliceDone ? { uploaded: start, attempts: 0 } : { uploaded: start },
+        )
+        const bytes = await this.readSlice(
+          rec.fileId,
+          start,
+          Math.min(rec.size, start + UPLOAD_SLICE),
+        )
+        if (!bytes) return 'next' // cancelled
         const slice = new Blob([bytes])
         status = await withTimeout(
           drive.putSlice(rec.sessionUrl!, slice, start, rec.size, (sent) =>
@@ -235,6 +243,7 @@ export class UploadQueue extends Emitter {
           ),
           this.stepTimeout + (slice.size / (1024 * 1024)) * this.sliceTimeoutPerMiB,
         )
+        sliceDone = true
       }
       if (status.file.size !== rec.size) {
         await drive.trash(status.file.id)
@@ -249,7 +258,9 @@ export class UploadQueue extends Emitter {
         return 'stop'
       }
       const attempts = rec.attempts + 1
-      const nextAttemptAt = this.now() + backoffDelay(attempts)
+      // "Sync now" was tapped while this attempt was running: try again at once, as asked.
+      const retryAsked = this.retryGeneration !== generation
+      const nextAttemptAt = retryAsked ? this.now() : this.now() + backoffDelay(attempts)
       const offline = e instanceof OfflineError
       this.blocked = offline ? 'offline' : null
       if (offline) this.schedule(nextAttemptAt)
@@ -270,6 +281,28 @@ export class UploadQueue extends Emitter {
     }
   }
 
+  /**
+   * Bytes start…end of a queued file, read into memory (Safari can fail or stall when a request
+   * body is a Blob that lives in IndexedDB). The Blob is fetched afresh each time, and once more
+   * if reading fails, in case it went stale. Null if the item is no longer queued (cancelled).
+   */
+  private async readSlice(fileId: string, start: number, end: number): Promise<ArrayBuffer | null> {
+    let lastError: unknown
+    for (let tries = 0; tries < 2; tries++) {
+      const blob = await this.db.uploadBlob(fileId)
+      if (!blob || !(await this.db.uploads.get(fileId))) return null
+      try {
+        return await blob.slice(start, end).arrayBuffer()
+      } catch (e) {
+        lastError = e
+      }
+    }
+    throw new Error(
+      `Could not read the encrypted file from this device's storage (${(lastError as Error).message}).`,
+      { cause: lastError },
+    )
+  }
+
   /** Bytes sent within the current slice (in memory only, at most 4 updates a second). */
   private sliceProgress(fileId: string, uploaded: number) {
     const p = this.progress.get(fileId)
@@ -283,7 +316,7 @@ export class UploadQueue extends Emitter {
   }
 
   private async finish(rec: UploadRecord) {
-    await this.db.uploads.delete(rec.fileId)
+    await this.db.deleteUpload(rec.fileId)
     this.progress.delete(rec.fileId)
     this.emit()
   }

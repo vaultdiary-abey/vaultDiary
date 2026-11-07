@@ -89,8 +89,8 @@ describe('background thumbnail job', () => {
     const files = new Map<string, Blob>()
     const add = async (name: string, mime: string, bytes = 100) => {
       const a = await session.addAttachment(new File([randomBytes(bytes)], name, { type: mime }))
-      files.set(a.fileId, (await db.uploads.get(a.fileId))!.blob)
-      await db.uploads.delete(a.fileId) // as if uploaded
+      files.set(a.fileId, (await db.uploadBlob(a.fileId))!)
+      await db.deleteUpload(a.fileId) // as if uploaded
       return a
     }
     const photo = await add('a.jpg', 'image/jpeg')
@@ -131,7 +131,7 @@ describe('background thumbnail job', () => {
     expect(await t.db.thumbs.get(thumbId)).toBeTruthy()
     expect(await t.db.uploads.get(thumbId)).toBeTruthy()
     expect((await t.db.entries.get(t.e.id))!.dirty).toBe(1)
-    const thumb = await t.session.decryptThumbnail(thumbId, (await t.db.uploads.get(thumbId))!.blob)
+    const thumb = await t.session.decryptThumbnail(thumbId, (await t.db.uploadBlob(thumbId))!)
     expect([...new Uint8Array(await thumb.arrayBuffer())]).toEqual([0xff, 0xd8, 0xff])
 
     // Second run: nothing left except the broken file (tried once more, then given up).
