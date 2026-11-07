@@ -219,8 +219,7 @@ export class VaultSession extends Emitter {
    */
   async releaseFile(fileId: string): Promise<void> {
     if (this.isReferenced(fileId) || this.summaries.size > 0) return
-    const queued = await this.db.uploads.get(fileId)
-    if (queued) await this.db.uploads.delete(fileId)
+    await this.db.deleteUpload(fileId)
     await this.db.thumbs.delete(fileId)
     await this.db.deletes.put({ path: `files/${fileId}.vdf`, driveId: null, createdAt: Date.now() })
   }
@@ -254,18 +253,20 @@ export class VaultSession extends Emitter {
   }
 
   private async queueUpload(fileId: string, blob: Blob): Promise<void> {
-    await this.db.uploads.put({
-      fileId,
+    await this.db.addUpload(
+      {
+        fileId,
+        size: blob.size,
+        sessionUrl: null,
+        sessionStartedAt: 0,
+        uploaded: 0,
+        attempts: 0,
+        nextAttemptAt: 0,
+        lastError: null,
+        createdAt: Date.now(),
+      },
       blob,
-      size: blob.size,
-      sessionUrl: null,
-      sessionStartedAt: 0,
-      uploaded: 0,
-      attempts: 0,
-      nextAttemptAt: 0,
-      lastError: null,
-      createdAt: Date.now(),
-    })
+    )
     this.onLocalChange()
   }
 

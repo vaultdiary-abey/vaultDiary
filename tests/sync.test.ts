@@ -22,6 +22,7 @@ import { KV, VaultDB } from '../src/storage/db'
 import { backoffDelay } from '../src/sync/backoff'
 import { SyncEngine } from '../src/sync/sync'
 import { UploadQueue } from '../src/sync/uploads'
+import { safariBlobs } from './safariBlobs'
 
 let drive: FakeDrive
 let location: VaultLocation
@@ -498,6 +499,79 @@ describe('upload queue', () => {
       },
     )
     expect(Buffer.from(await dec.arrayBuffer()).equals(Buffer.from(plain))).toBe(true)
+  })
+
+  it("uploads every slice in one go when the device's stored copy goes stale on rewrite (Safari)", async () => {
+    const a = await device()
+    const stale = [safariBlobs(a.db.uploads, 'blob'), safariBlobs(a.db.uploadBlobs, 'blob')]
+    const size = 3 * UPLOAD_SLICE + 777
+    const plain = randomBytes(size)
+    const att = await a.session.addAttachment(new File([plain], 'video.mp4', { type: 'video/mp4' }))
+    const before = drive.slicesPut
+    await a.uploads.kick()
+    expect(stale.map((x) => x.failedReads)).toEqual([0, 0])
+    expect(drive.slicesPut - before).toBe(4) // every slice, in one attempt
+    expect(a.uploads.items()).toHaveLength(0)
+    expect(await a.db.uploads.count()).toBe(0)
+    expect(await a.db.uploadBlobs.count()).toBe(0)
+    const stored = [...drive.files.values()].find((f) => f.name === `${att.fileId}.vdf`)!
+    const dec = await decryptToBlob(
+      mk,
+      blobSource(new Blob([new Uint8Array(stored.data)])),
+      att.mime,
+      { expectedId: att.fileId },
+    )
+    expect(Buffer.from(await dec.arrayBuffer()).equals(Buffer.from(plain))).toBe(true)
+  })
+
+  it('moves files queued by an older version out of their records, then uploads them', async () => {
+    const a = await device()
+    const plain = randomBytes(2 * UPLOAD_SLICE + 5)
+    const att = await a.session.addAttachment(new File([plain], 'old.mp4', { type: 'video/mp4' }))
+    // Put the queue item back the way older versions stored it: the file inside the record.
+    const blob = (await a.db.uploadBlob(att.fileId))!
+    const meta = (await a.db.uploads.get(att.fileId))!
+    await a.db.uploadBlobs.clear()
+    await a.db.uploads.put({ ...meta, blob })
+    const stale = [safariBlobs(a.db.uploads, 'blob'), safariBlobs(a.db.uploadBlobs, 'blob')]
+
+    await a.uploads.kick()
+    expect(stale.map((x) => x.failedReads)).toEqual([0, 0])
+    expect(await a.db.uploads.count()).toBe(0)
+    expect(await a.db.uploadBlobs.count()).toBe(0)
+    const stored = [...drive.files.values()].find((f) => f.name === `${att.fileId}.vdf`)!
+    expect(stored.data.length).toBe(blob.size)
+  })
+
+  it('a slice that goes through starts the backoff over', async () => {
+    const a = await device()
+    await a.session.addAttachment(new File([randomBytes(4 * UPLOAD_SLICE)], 'long.mp4'))
+    drive.failSliceAt = drive.slicesPut + 2
+    await a.uploads.kick()
+    a.uploads.stop()
+    expect(a.uploads.items()[0]).toMatchObject({ uploaded: UPLOAD_SLICE, attempts: 1 })
+
+    // The next attempt sends a slice, then fails: attempt 1 again, not 2 (no growing wait).
+    drive.failSliceAt = drive.slicesPut + 2
+    a.uploads.now = () => Date.now() + 60_000
+    await a.uploads.kick()
+    a.uploads.stop()
+    expect(a.uploads.items()[0]).toMatchObject({ uploaded: 2 * UPLOAD_SLICE, attempts: 1 })
+  })
+
+  it('"Sync now" tapped while an attempt hangs retries as soon as it fails', async () => {
+    const a = await device()
+    await a.session.addAttachment(new File([randomBytes(1000)], 'clip.mp4'))
+    a.uploads.stepTimeout = 50
+    a.uploads.sliceTimeoutPerMiB = 0
+    drive.hangNext = true
+    const running = a.uploads.kick()
+    await new Promise((r) => setTimeout(r, 10))
+    await a.uploads.retryNow() // tapped during the hang
+    await running
+    a.uploads.stop()
+    expect(a.uploads.items()).toHaveLength(0)
+    expect(await a.db.uploads.count()).toBe(0)
   })
 
   it('waits while offline and retries with backoff', async () => {

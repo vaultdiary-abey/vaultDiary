@@ -811,8 +811,8 @@ export class Controller extends Emitter {
     fileId: string,
     onProgress?: (done: number, total: number) => void,
   ): Promise<Blob> {
-    const queued = await this.db.uploads.get(fileId)
-    if (queued) return queued.blob
+    const queued = await this.db.uploadBlob(fileId)
+    if (queued) return queued
     if (!this.auth.hasToken() || !this.location) {
       throw new Error('Connect to Google Drive to download this attachment.')
     }
@@ -888,9 +888,10 @@ export class Controller extends Emitter {
   async openStream(attachment: Attachment): Promise<OpenStream & { reader: PlainReader }> {
     const session = this.session
     if (!session) throw new Error('The vault is locked.')
-    const queued = await this.db.uploads.get(attachment.fileId)
+    // Through a fresh read each time: the upload queue's own writes must not invalidate it.
+    const queued = await this.db.uploadBlob(attachment.fileId)
     let source
-    if (queued) source = blobSource(queued.blob)
+    if (queued) source = blobSource(queued)
     else {
       if (!this.location) throw new Error('Connect to Google Drive to play this attachment.')
       if (!this.auth.hasToken()) await this.waitForSignIn()

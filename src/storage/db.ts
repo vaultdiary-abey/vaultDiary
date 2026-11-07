@@ -20,10 +20,16 @@ export interface EntryRecord {
   pushingUpdatedAt: string | null
 }
 
+/**
+ * An attachment waiting to reach Drive: progress and retry bookkeeping only. The encrypted file
+ * itself is in `uploadBlobs`, which is written once and never updated: this record is rewritten
+ * often (progress, errors, retries), and Safari replaces a stored Blob whenever its record is
+ * written again, so a Blob read earlier stops working ("The object can not be found here.").
+ */
 export interface UploadRecord {
   fileId: string
-  /** The encrypted .vdf container. */
-  blob: Blob
+  /** Only in records queued before version 3; moved to `uploadBlobs` by migrateUploadBlobs(). */
+  blob?: Blob
   size: number
   sessionUrl: string | null
   sessionStartedAt: number
@@ -32,6 +38,12 @@ export interface UploadRecord {
   nextAttemptAt: number
   lastError: string | null
   createdAt: number
+}
+
+/** The encrypted .vdf container of a queued upload. Written once, deleted with its upload. */
+export interface UploadBlobRecord {
+  fileId: string
+  blob: Blob
 }
 
 export interface DeleteRecord {
@@ -81,6 +93,7 @@ export interface KvRecord {
 export class VaultDB extends Dexie {
   entries!: EntityTable<EntryRecord, 'id'>
   uploads!: EntityTable<UploadRecord, 'fileId'>
+  uploadBlobs!: EntityTable<UploadBlobRecord, 'fileId'>
   deletes!: EntityTable<DeleteRecord, 'path'>
   kv!: EntityTable<KvRecord, 'key'>
   recordings!: EntityTable<RecordingRecord, 'id'>
@@ -101,6 +114,61 @@ export class VaultDB extends Dexie {
       recordingChunks: '[recId+seq], recId',
       thumbs: 'fileId',
     })
+    // Upload files apart from their bookkeeping (see UploadRecord). Existing queue items are
+    // moved lazily by migrateUploadBlobs(), so a failed move can never stop the app opening.
+    this.version(3).stores({ uploadBlobs: 'fileId' })
+  }
+
+  /** Queues an encrypted file for upload (`meta` describes it, `blob` is the file). */
+  async addUpload(meta: Omit<UploadRecord, 'blob'>, blob: Blob): Promise<void> {
+    await this.transaction('rw', this.uploads, this.uploadBlobs, async () => {
+      await this.uploadBlobs.put({ fileId: meta.fileId, blob })
+      await this.uploads.put(meta)
+    })
+  }
+
+  /**
+   * The encrypted file of a queued upload, read afresh: never keep the Blob across writes to
+   * the queue (Safari may invalidate it). Null once the upload has finished or was cancelled.
+   */
+  async uploadBlob(fileId: string): Promise<Blob | null> {
+    const stored = await this.uploadBlobs.get(fileId)
+    if (stored) return stored.blob
+    return (await this.uploads.get(fileId))?.blob ?? null
+  }
+
+  async deleteUpload(fileId: string): Promise<void> {
+    await this.transaction('rw', this.uploads, this.uploadBlobs, async () => {
+      await this.uploads.delete(fileId)
+      await this.uploadBlobs.delete(fileId)
+    })
+  }
+
+  /**
+   * Moves the files of queue items saved before version 3 into `uploadBlobs`. Returns how many
+   * could not be moved (they keep working from the old place, just less reliably on Safari).
+   */
+  async migrateUploadBlobs(): Promise<number> {
+    let failed = 0
+    const keys = (await this.uploads.toCollection().primaryKeys()) as string[]
+    for (const fileId of keys) {
+      try {
+        await this.transaction('rw', this.uploads, this.uploadBlobs, async () => {
+          const rec = await this.uploads.get(fileId)
+          if (!rec?.blob) return
+          // Copy first; only then rewrite the old record (which is what drops the old copy).
+          if (!(await this.uploadBlobs.get(fileId))) {
+            await this.uploadBlobs.put({ fileId, blob: rec.blob })
+          }
+          const { blob: _old, ...meta } = rec
+          void _old
+          await this.uploads.put(meta)
+        })
+      } catch {
+        failed++
+      }
+    }
+    return failed
   }
 
   async getKv<T>(key: string): Promise<T | undefined> {
@@ -119,6 +187,7 @@ export class VaultDB extends Dexie {
     const tables = [
       this.entries,
       this.uploads,
+      this.uploadBlobs,
       this.deletes,
       this.kv,
       this.recordings,

@@ -135,8 +135,8 @@ describe('"Make viewing copies for older photos"', () => {
       const a = await session.addAttachment(
         new File([randomBytes(50)], `IMG_${i}.HEIC`, { type: 'image/heic' }),
       )
-      files.set(a.fileId, (await db.uploads.get(a.fileId))!.blob)
-      await db.uploads.delete(a.fileId) // as if uploaded
+      files.set(a.fileId, (await db.uploadBlob(a.fileId))!)
+      await db.deleteUpload(a.fileId) // as if uploaded
       attachments.push(a)
     }
     const e: Entry = { ...newEntry('2026-03-08'), attachments }
@@ -172,7 +172,7 @@ describe('"Make viewing copies for older photos"', () => {
     // Queued for upload (not cached like thumbnails), and the entry is saved for sync.
     expect(await t.db.uploads.get(ids[0]!)).toBeTruthy()
     expect(await t.db.thumbs.get(ids[0]!)).toBeUndefined()
-    const copy = await t.session.decryptThumbnail(ids[0]!, (await t.db.uploads.get(ids[0]!))!.blob)
+    const copy = await t.session.decryptThumbnail(ids[0]!, (await t.db.uploadBlob(ids[0]!))!)
     expect([...new Uint8Array(await copy.arrayBuffer())]).toEqual([0xff, 0xd8, 0xff, 0xe0])
     // The original is untouched.
     expect(after.attachments.map((a) => a.fileId)).toEqual(t.e.attachments.map((a) => a.fileId))
